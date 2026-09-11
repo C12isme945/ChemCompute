@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -28,6 +29,8 @@ class NodeAgent:
         self.config = config
         self.config_path = Path(config_path) if config_path else None
         self.running = False
+        self.execution_lock = threading.Lock()
+        self.active_task = False
         self.adapter = GromacsAdapter(
             custom_executable_path=config.gromacs_custom_path,
             workspace_dir=config.workspace_dir,
@@ -105,7 +108,7 @@ class NodeAgent:
 
         req_body = NodeHeartbeatRequest(
             node_id=self.config.node_id,
-            status="online",
+            status="busy" if self.active_task else "online",
             hardware=hw,
             software=sw,
         )
@@ -163,6 +166,8 @@ class NodeAgent:
             return
 
         self.running = True
+        from chemcompute.node.task_worker import run_queue
+        threading.Thread(target=run_queue, args=(self,), daemon=True).start()
         logger.info("ChemCompute 节点代理已进入运行状态，心跳周期: %d 秒", self.config.heartbeat_interval_seconds)
 
         with httpx.Client(timeout=15.0) as client:
@@ -170,7 +175,8 @@ class NodeAgent:
                 try:
                     jobs = self.send_heartbeat(client)
                     for job in jobs:
-                        self.execute_and_report_job(client, job)
+                        with self.execution_lock:
+                            self.execute_and_report_job(client, job)
                 except Exception as e:
                     logger.warning("心跳循环捕获异常: %s", e)
 

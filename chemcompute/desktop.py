@@ -22,8 +22,8 @@ class Console:
         self.closed = False
         self.timer = None
         root.title(f'ChemCompute 桌面操控台 · {__version__}')
-        root.geometry('1080x650')
-        root.minsize(820, 520)
+        root.geometry('1180x820')
+        root.minsize(1080, 740)
         root.configure(background='#eef3f8')
         style = ttk.Style(root)
         style.theme_use('clam')
@@ -53,8 +53,12 @@ class Console:
             button = ttk.Button(actions, text=text, command=action)
             button.pack(side='left', padx=(0, 8))
             self.buttons[text] = button
+        self.notebook = ttk.Notebook(frame)
+        self.notebook.pack(fill='both', expand=True)
+        overview = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(overview, text='本机与节点概览')
         columns = ('name', 'state', 'cpu', 'ram', 'gpu', 'gromacs')
-        self.table = ttk.Treeview(frame, columns=columns, show='headings', height=8)
+        self.table = ttk.Treeview(overview, columns=columns, show='headings', height=8)
         for key, title, width in zip(columns,
                                     ['节点名称', '状态', 'CPU 占用', '内存占用', 'GPU', 'GROMACS'],
                                     [170, 90, 90, 90, 220, 160]):
@@ -69,6 +73,8 @@ class Console:
         for text, folder in [('配置文件', 'config'), ('运行日志', 'logs')]:
             ttk.Button(footer, text=text, command=lambda f=folder: self.open_folder(f)).pack(side='left', padx=(0, 8))
         ttk.Label(footer, text='关闭窗口后后台继续运行').pack(side='right')
+        from chemcompute.desktop_workspace import Workspace
+        self.workspace = Workspace(self, self.notebook)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.timer = root.after(100, self.pump)
         self.refresh()
@@ -120,7 +126,12 @@ class Console:
     def pump(self):
         while not self.events.empty():
             kind, value, error = self.events.get_nowait()
-            if kind == 'action':
+            if callable(kind):
+                try:
+                    kind(value, error)
+                except Exception as exc:
+                    self.notice.set(str(exc))
+            elif kind == 'action':
                 self.busy = False
                 for name in ['启动后台', '停止后台', '重启后台']:
                     self.buttons[name].configure(state='normal')
@@ -178,6 +189,8 @@ def run_console(smoke_test: bool = False) -> int:
         console.render({'role': 'both', 'running': False, 'online': False, 'url': 'http://127.0.0.1:8000', 'notice': 'Smoke test', 'nodes': []})
         assert console.buttons['启动后台'].winfo_exists()
         assert console.table.winfo_exists()
+        assert len(console.notebook.tabs()) == 5
+        assert console.workspace.task_tree.winfo_exists()
         root.after(100, console.close)
     root.mainloop()
     if smoke_test:

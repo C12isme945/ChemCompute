@@ -1,9 +1,10 @@
 """Drain output continuously while retaining only a bounded prefix in memory."""
 import subprocess
 import threading
+import time
 
 
-def run_capped(cmd, cwd=None, timeout=300, **kwargs):
+def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, **kwargs):
     proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             stdin=subprocess.DEVNULL, shell=False)
     outputs = [bytearray(), bytearray()]
@@ -21,7 +22,15 @@ def run_capped(cmd, cwd=None, timeout=300, **kwargs):
     for thread in threads:
         thread.start()
     try:
-        proc.wait(timeout=timeout)
+        deadline = time.monotonic() + timeout
+        while proc.poll() is None:
+            if cancel_event and cancel_event.is_set():
+                proc.kill()
+                proc.wait()
+                raise InterruptedError('Computation cancelled')
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            time.sleep(0.1)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()

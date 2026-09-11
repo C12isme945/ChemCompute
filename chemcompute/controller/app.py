@@ -16,6 +16,7 @@ from chemcompute.controller.db import Database
 from chemcompute.controller.routes.auth import router as auth_router
 from chemcompute.controller.routes.jobs import router as jobs_router
 from chemcompute.controller.routes.nodes import router as nodes_router
+from chemcompute.controller.routes.tasks import router as tasks_router
 from chemcompute.controller.routes.web import router as web_router
 
 logger = logging.getLogger("chemcompute.controller")
@@ -77,5 +78,6 @@ def create_app(config: ControllerConfig | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(nodes_router)
     app.include_router(jobs_router)
+    app.include_router(tasks_router)
 
     return app

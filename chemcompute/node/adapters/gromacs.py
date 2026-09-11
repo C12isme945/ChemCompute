@@ -204,6 +204,7 @@ class GromacsAdapter:
         arguments: list[str],
         timeout_seconds: int = 300,
         custom_cwd: Path | str | None = None,
+        cancel_event=None,
     ) -> ExecutionResult:
         """
         受控有界执行 GROMACS 子命令：
@@ -291,6 +292,7 @@ class GromacsAdapter:
                 capture_output=True,
                 text=True,
                 timeout=bounded_timeout,
+                cancel_event=None if self._wsl else cancel_event,
                 shell=False,
             )
             duration = round(time.monotonic() - start_time, 3)
