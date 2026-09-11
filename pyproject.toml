@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chemcompute"
+version = "0.1.0"
+description = "ChemCompute - 现代化化学计算与GROMACS分布式节点调度平台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "ChemCompute Contributors" }
+]
+keywords = ["chemistry", "computation", "gromacs", "fastapi", "distributed-computing", "hpc"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "psutil==6.1.1",
+    "pyyaml==6.0.2",
+    "jinja2==3.1.5",
+    "httpx==0.28.1",
+    "python-multipart==0.0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.0",
+    "ruff==0.8.4",
+    "pyinstaller==6.11.1",
+]
+
+[project.scripts]
+chemcompute = "chemcompute.cli:main"
+chemcompute-controller = "chemcompute.cli:main_controller"
+chemcompute-node = "chemcompute.cli:main_node"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chemcompute*"]
+
+[tool.setuptools.package-data]
+"chemcompute.controller" = ["templates/*", "static/*", "static/css/*", "static/js/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

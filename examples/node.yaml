@@ -1,0 +1,8 @@
+controller_url: http://127.0.0.1:8000
+node_name: LAB-NODE
+invite_code: null
+node_id: null
+node_token: null
+workspace_dir: data/workspace
+gromacs_custom_path: null
+max_job_timeout_seconds: 3600

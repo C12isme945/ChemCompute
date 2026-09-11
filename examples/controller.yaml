@@ -1,0 +1,5 @@
+host: 127.0.0.1
+port: 8000
+db_path: data/chemcompute.db
+secret_file: data/chemcompute-admin.secret
+heartbeat_interval_seconds: 15
