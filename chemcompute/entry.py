@@ -69,6 +69,12 @@ def desktop_run() -> int:
         guard.bind(("127.0.0.1", port))
     except OSError:
         return 0
+    import atexit
+
+    from chemcompute.desktop_backend import clear_own_record, record_process
+
+    record_process()
+    atexit.register(clear_own_record)
     ensure_secure_directory("logs")
     logging.basicConfig(filename="logs/desktop.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
@@ -109,5 +115,8 @@ def main() -> int:
         return 0
     if len(sys.argv) > 1 and sys.argv[1] == "desktop-run":
         return desktop_run()
+    if len(sys.argv) > 1 and sys.argv[1] == "console":
+        from chemcompute.desktop import run_console
+        return run_console(smoke_test='--smoke-test' in sys.argv)
     from chemcompute.cli import main as cli_main
     return cli_main()

@@ -1,6 +1,6 @@
-#define AppVersion "0.1.0"
+#define AppVersion "0.1.1"
 [Setup]
-AppId={{58D6F106-68F0-48A8-B1F3-D40716888B80}
+AppId={code:GetAppId}
 AppName=ChemCompute
 AppVersion={#AppVersion}
 AppPublisher=ChemCompute Contributors
@@ -17,10 +17,12 @@ WizardStyle=modern
 LicenseFile=..\LICENSE
 CloseApplications=yes
 SetupLogging=no
+UsePreviousLanguage=no
 
 [Files]
 Source: "..\dist\ChemCompute\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "launch.vbs"; DestDir: "{app}"
+Source: "launch-console.vbs"; DestDir: "{app}"
 Source: "..\scripts\network.ps1"; DestDir: "{app}\scripts"
 Source: "..\README.md"; DestDir: "{app}"
 
@@ -31,19 +33,33 @@ Name: startup; Description: "Start ChemCompute in background when I sign in"; Fl
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: ChemCompute; ValueData: "wscript.exe ""{app}\launch.vbs"""; Tasks: startup; Flags: uninsdeletevalue
 
 [Icons]
+Name: "{userdesktop}\{code:GetShortcutName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; WorkingDir: "{app}"; Comment: "ChemCompute desktop control console"
+Name: "{group}\ChemCompute Console"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; WorkingDir: "{app}"
 Name: "{group}\Start ChemCompute"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""
 Name: "{group}\Web Console"; Filename: "http://127.0.0.1:8000"
 Name: "{group}\Configuration and logs"; Filename: "{localappdata}\ChemComputeData"
 Name: "{group}\Uninstall ChemCompute"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""; Description: "Start ChemCompute"; Flags: postinstall skipifsilent nowait
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; Description: "Open ChemCompute desktop console"; Flags: postinstall skipifsilent nowait
 
 [Code]
 var
   RolePage: TInputOptionWizardPage;
   NodePage: TInputQueryWizardPage;
   HostPage: TInputQueryWizardPage;
+
+function GetAppId(Param: String): String;
+begin
+  Result := '{58D6F106-68F0-48A8-B1F3-D40716888B80}';
+  if ExpandConstant('{param:TESTINSTALL|0}') = '1' then Result := Result + '-SmokeTest';
+end;
+
+function GetShortcutName(Param: String): String;
+begin
+  Result := 'ChemCompute Console';
+  if ExpandConstant('{param:TESTINSTALL|0}') = '1' then Result := Result + ' Test';
+end;
 
 procedure InitializeWizard;
 begin

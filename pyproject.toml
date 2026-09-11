@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chemcompute"
-version = "0.1.0"
+version = "0.1.1"
 description = "ChemCompute - 现代化化学计算与GROMACS分布式节点调度平台"
 readme = "README.md"
 requires-python = ">=3.10"

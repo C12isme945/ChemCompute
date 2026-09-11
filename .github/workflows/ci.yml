@@ -44,6 +44,8 @@ jobs:
         run: ./scripts/build.ps1 -ISCC "$env:RUNNER_TEMP/InnoSetup/ISCC.exe"
       - name: Test packaged program
         run: python scripts/smoke_exe.py dist/ChemCompute/ChemCompute.exe
+      - name: Test native console and desktop controls
+        run: python scripts/smoke_desktop.py dist/ChemCompute/ChemCompute.exe
       - name: Test install and uninstall
         shell: pwsh
         run: ./scripts/smoke_installer.ps1 -TestRoot "$env:RUNNER_TEMP/chemcompute-install-test"
