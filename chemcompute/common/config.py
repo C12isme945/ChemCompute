@@ -55,4 +55,3 @@ def save_yaml_config(config: BaseModel, path: str | Path) -> None:
     with open(p, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f, allow_unicode=True, sort_keys=False)
     secure_path(p, is_dir=False)
-

@@ -32,10 +32,16 @@ jobs:
       - run: python -m pytest -q
       - name: Install compiler
         shell: pwsh
-        run: choco install innosetup --version=6.7.3 --yes --no-progress
+        run: |
+          $setup = "$env:RUNNER_TEMP/innosetup-6.7.3.exe"
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $setup
+          if ((Get-FileHash $setup -Algorithm SHA256).Hash -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw 'Compiler checksum mismatch' }
+          $installDir = "$env:RUNNER_TEMP/InnoSetup"
+          $proc = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="'+$installDir+'"')) -WindowStyle Hidden -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw 'Compiler installation failed' }
       - name: Build installer
         shell: pwsh
-        run: ./scripts/build.ps1
+        run: ./scripts/build.ps1 -ISCC "$env:RUNNER_TEMP/InnoSetup/ISCC.exe"
       - name: Test packaged program
         run: python scripts/smoke_exe.py dist/ChemCompute/ChemCompute.exe
       - name: Test install and uninstall

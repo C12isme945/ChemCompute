@@ -167,4 +167,3 @@ def load_or_create_runtime_admin_secret(
         logger.error("无法将管理员密钥持久化至文件 %s: %s", target_path, e)
 
     return new_secret, True
-
