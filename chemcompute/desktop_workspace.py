@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -86,10 +87,13 @@ class Workspace:
     def refresh_tasks(self):
         def display(values):
             self.tasks = {v['id']: v for v in values}
+            selected = self.task_tree.selection()
             self.task_tree.delete(*self.task_tree.get_children())
             states = {'queued': '排队', 'running': '运行中', 'completed': '完成', 'failed': '失败', 'cancelled': '已取消'}
             for value in values:
                 self.task_tree.insert('', 'end', iid=value['id'], values=(value['spec']['name'], states.get(value['status'], value['status']), str(value['progress']) + '%', value['node'] or '等待匹配'))
+            if selected and selected[0] in self.tasks:
+                self.task_tree.selection_set(selected[0])
         self.run(lambda: api.call('GET', '/api/v2/tasks'), display)
 
     def selected_task(self):
@@ -150,6 +154,13 @@ class Workspace:
         self.description = tk.StringVar()
         ttk.Entry(self.submit_tab, textvariable=self.description).pack(fill='x', pady=5)
         ttk.Label(self.submit_tab, text='任务说明（可留空）；下方编辑步骤 JSON，仅允许受限 GROMACS 命令，路径相对计算包根目录。').pack(anchor='w')
+        row = ttk.Frame(self.submit_tab)
+        row.pack(fill='x')
+        self.step_command = ttk.Combobox(row, values=['version', 'check', 'grompp', 'mdrun', 'editconf', 'solvate', 'genion', 'energy'], width=12, state='readonly')
+        self.step_command.set('mdrun')
+        self.step_command.pack(side='left')
+        self.step_args = self.field(row, '步骤参数（文件名有空格时加双引号）', '-s run.tpr -deffnm run -nt 1', 52)
+        ttk.Button(row, text='追加步骤', command=self.add_step).pack(side='left', padx=8)
         self.steps = tk.Text(self.submit_tab, height=5, font=('Consolas', 10))
         self.steps.pack(fill='both', expand=True)
         self.set_steps(PRESETS['版本与环境检查'])
@@ -158,6 +169,17 @@ class Workspace:
         ttk.Button(row, text='DeepSeek 建议节点', command=self.ai_allocate).pack(side='left')
         ttk.Button(row, text='预览并提交', command=self.submit).pack(side='left', padx=8)
         ttk.Label(row, text='AI 发送说明、步骤、文件名和资源摘要；不发送计算包正文。').pack(side='left')
+
+    def add_step(self):
+        try:
+            from chemcompute.tasks import Step
+            steps = json.loads(self.steps.get('1.0', 'end'))
+            step = Step(subcommand=self.step_command.get(), arguments=shlex.split(self.step_args.get()))
+            if len(steps) >= 16:
+                raise ValueError('一个任务最多 16 步。')
+            self.set_steps([*steps, step.model_dump()])
+        except Exception as exc:
+            self.console.notice.set(str(exc))
 
     def set_steps(self, steps):
         self.steps.delete('1.0', 'end')

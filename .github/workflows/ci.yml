@@ -55,6 +55,7 @@ jobs:
           path: |
             dist/ChemCompute-Setup.exe
             dist/SHA256SUMS.txt
+            dist/ChemCompute-Water-Smoke.zip
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: windows

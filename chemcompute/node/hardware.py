@@ -53,6 +53,7 @@ def probe_nvidia_gpus() -> list[GpuDevice]:
             text=True,
             timeout=5,
             shell=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if proc.returncode != 0:
             logger.debug("nvidia-smi 返回非零码 %d: %s", proc.returncode, proc.stderr.strip())

@@ -1,4 +1,4 @@
-#define AppVersion "0.1.1"
+#define AppVersion "0.2.0"
 [Setup]
 AppId={code:GetAppId}
 AppName=ChemCompute
@@ -25,6 +25,8 @@ Source: "launch.vbs"; DestDir: "{app}"
 Source: "launch-console.vbs"; DestDir: "{app}"
 Source: "..\scripts\network.ps1"; DestDir: "{app}\scripts"
 Source: "..\README.md"; DestDir: "{app}"
+Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: recursesubdirs createallsubdirs
+Source: "..\examples\water-smoke\*"; DestDir: "{app}\examples\water-smoke"
 
 [Tasks]
 Name: startup; Description: "Start ChemCompute in background when I sign in"; Flags: unchecked

@@ -100,6 +100,7 @@ class GromacsAdapter:
                 text=True,
                 timeout=10,
                 shell=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             raw_out = (proc.stdout + "\n" + proc.stderr).strip()
             if proc.returncode != 0 or "GROMACS version:" not in raw_out:
@@ -280,7 +281,7 @@ class GromacsAdapter:
         cmd = [info.executable_path, "--version" if subcmd_clean == "version" else subcmd_clean, *arguments]
         if self._wsl:
             # Direct argv and --cd avoid shell interpolation of paths or parameters.
-            cmd = [info.executable_path, "--cd", str(work_dir), "--exec", "gmx", *cmd[1:]]
+            cmd = [info.executable_path, "--cd", str(work_dir), "--exec", "timeout", "--signal=TERM", "--kill-after=5", f"{bounded_timeout}s", "gmx", *cmd[1:]]
 
         start_time = time.monotonic()
         try:
@@ -291,9 +292,10 @@ class GromacsAdapter:
                 cwd=str(work_dir),
                 capture_output=True,
                 text=True,
-                timeout=bounded_timeout,
+                timeout=bounded_timeout + 10 if self._wsl else bounded_timeout,
                 cancel_event=None if self._wsl else cancel_event,
                 shell=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             duration = round(time.monotonic() - start_time, 3)
 
@@ -307,7 +309,7 @@ class GromacsAdapter:
                 stderr_str = stderr_str[:max_bytes] + "\n...[输出过长，已截断]"
 
             return ExecutionResult(
-                exit_code=proc.returncode,
+                exit_code=-9 if self._wsl and proc.returncode in {124, 137} else proc.returncode,
                 stdout=stdout_str,
                 stderr=stderr_str,
                 duration_seconds=duration,

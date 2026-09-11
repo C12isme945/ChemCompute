@@ -2,17 +2,18 @@
 
 ```mermaid
 flowchart LR
-  User[浏览器控制台] -->|管理员令牌| API[FastAPI Controller]
-  API --> DB[(SQLite: 节点/邀请码哈希/作业)]
-  Node[后台 Agent] -->|注册和认证心跳| API
-  API -->|心跳响应内下发任务| Node
-  Node --> HW[CPU RAM GPU 软件探测]
-  Node --> GMX[GROMACS 受限子进程]
-  Installer[Inno Setup] --> Config[本机运行时配置]
-  Config --> Node
+  User[原生桌面控制台] -->|管理员认证与 ZIP| API[FastAPI Controller]
+  User -->|元数据与资源摘要| AI[DeepSeek 建议节点]
+  AI -->|经本地验证的节点 ID| User
+  API --> DB[(SQLite 节点/邀请码/任务队列)]
+  API --> ZIP[受限输入与结果文件库]
+  Agent[节点代理] -->|独立心跳| API
+  Worker[单任务工作线程] -->|原子领取/下载/状态/结果| API
+  Agent --> Worker
+  Worker --> GMX[GROMACS 独立任务目录]
+  Installer[Inno Setup + 冻结 Python/Tk] --> User
 ```
 
-跨电脑通信走 Tailscale；每个节点分别执行独立作业，不通过互联网拼接一个 MPI 轨迹。
-Controller 和 Agent 由同一个冻结 Python 可执行程序提供。安装时选择角色，以当前用户运行，数据不写入程序安装目录。
+跨机通信使用加密 Tailscale 链路或外置 HTTPS。控制端使用 SQLite，适合单进程、小规模私有部署；任务领取使用 BEGIN IMMEDIATE 事务，单节点最多一个新版运行任务。无租约回收、高可用或失联自动重试。新旧队列不应混用于同一节点。
 
-SQLite 单控制端、单进程部署；不支持多 worker 竞争领取、作业租约恢复和高可用。节点同步执行长任务时不持续心跳，因此目前仅作为部署和短作业验证 MVP。未连接真实实验体系，不提供计算可信度或科学有效性结论。
+Controller 与 Agent 由同一冻结可执行程序提供，当前用户后台运行，不是系统服务。新版本添加 tasks_v2/packages_v2 表，保留旧数据。运行配置与数据库在用户运行目录，安装目录仅程序。DeepSeek 与远程管理凭据用当前用户 DPAPI 加密；节点令牌与主控 secret 仍为受 ACL 保护的本地文件。科学输入、结果不加密落盘。

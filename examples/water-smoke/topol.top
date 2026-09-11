@@ -1,0 +1,9 @@
+; Simple SPC/E water topology
+#include "oplsaa.ff/forcefield.itp"
+#include "oplsaa.ff/spce.itp"
+
+[ system ]
+Two SPC/E Water Molecules for ChemCompute Test
+
+[ molecules ]
+SOL         2

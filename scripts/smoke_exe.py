@@ -15,6 +15,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix='chemcompute-smoke-') as folder:
         root = Path(folder)
         env = dict(os.environ, CHEMCOMPUTE_HOME=folder)
+        env.pop("PYTHONHOME", None)
+        env.pop("PYTHONPATH", None)
+        env["PATH"] = os.pathsep.join([str(Path(os.environ["SystemRoot"]) / "System32"), os.environ["SystemRoot"]])
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]

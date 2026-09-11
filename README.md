@@ -2,14 +2,14 @@
 
 将 Windows 电脑接入私人化学计算网络的开源 MVP。包含 Inno Setup 安装器、FastAPI/SQLite 控制端、中文 Web Console、后台节点代理和 GROMACS 适配器。MIT 许可。
 
-**这是 0.1.1 预发布版。** 安装包不包含 GROMACS、COMSOL、ORCA、CUDA 或软件许可证。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。跨机吞吐量和无人登录开机运行尚未验证。
+**这是 0.2.0 预发布版。Windows 安装包已内置 Python 与 Tk，目标电脑不需要另装 Python。** 安装包不包含 GROMACS、COMSOL、ORCA、CUDA 或软件许可证。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。跨机吞吐量和无人登录开机运行尚未验证。
 
 ## 安装与第一次运行
 
 1. 从 GitHub Releases 下载 `ChemCompute-Setup.exe`，对照 `SHA256SUMS.txt` 校验。安装包尚未代码签名。
 2. 双击安装，选择 Controller、Compute node 或 Both。首次尝试选择 Both，即可在本机自动注册节点。
 3. Controller 默认监听 `127.0.0.1:8000`。若其他电脑需要加入，请填本机 Tailscale IP，并在节点上填对应 URL 与控制台生成的单次邀请码。
-4. 安装后自动创建桌面和开始菜单的 `ChemCompute Console` 快捷方式。打开原生桌面操控台，点击“启动后台”，即可查看连接状态和节点列表；“打开 Web 控制台”可进入完整作业管理页面。管理员密钥在 `%LOCALAPPDATA%\ChemComputeData\data\chemcompute-admin.secret`，用记事本打开后粘贴到登录框。
+4. 安装后自动创建桌面和开始菜单的 `ChemCompute Console` 快捷方式。打开原生桌面操控台，点击“启动后台”，即可查看连接状态和节点列表。新版任务中心、计算包上传、结果下载、邀请码及 AI 设置均可在桌面端完成。仅使用旧版 Web 页面时，管理员密钥在 `%LOCALAPPDATA%\ChemComputeData\data\chemcompute-admin.secret`，用记事本打开后粘贴到登录框。
 5. 在控制台查看节点 CPU、RAM、GPU 与软件探测，生成/撤销邀请码，创建 GROMACS 作业并查看状态和日志。
 
 默认安装至当前用户目录，不要求管理员权限。可选“登录时启动”使用当前用户启动项；**不是原生 Windows Service，不保证注销后或登录前运行**。安装包不自动修改防火墙、SSH 或 Tailscale 登录。
@@ -52,7 +52,11 @@ python -m venv .venv
 
 检测 PATH 或配置中的原生 `gromacs_custom_path`，无原生 EXE 时检测默认 WSL 发行版中的 GROMACS，执行真实 `gmx --version`。WSL 使用独立参数调用，不拼接 bash 命令。支持受限的 `check/grompp/mdrun/editconf/solvate/genion/energy` 子命令，传递参数列表，禁止 shell、目录逃逸，限制超时并保留最多 500 KB stdout/stderr。命令 `version` 映射到 `gmx --version`。
 
-输入文件需要提前放到节点 `data/workspace`，在控制台参数中使用相对路径。**没有自动输入上传、结果文件下载、MPI 跨机并行、任务断点恢复或可靠重试。** 每节点同步执行作业，执行期间心跳会暂停，可能暂时显示离线；当前适用于短任务验证。不要用来调度关键长任务。工作目录不是操作系统沙箱，只处理可信科学输入。
+新版桌面任务使用独立的 `/api/v2` 队列：上传 ZIP，预览步骤，选择资源要求及节点，提交后由节点拉取计算包，逐步执行并上传结果。心跳线程独立运行，单节点一次执行一个新版任务。旧 Web `/api/v1` 作业界面保持兼容；不要同时用两种队列调度同一节点。
+
+计算包上限 100 MiB、展开上限 512 MiB、最多 2000 文件，压缩比不超过 200；拒绝目录穿越、链接、加密 ZIP、Windows 危险名称、重复名称和 CRC 错误。计算结果采用不压缩 ZIP，所含文件总量因此也需小于约 100 MiB。超限任务会失败，文件保留在节点本机。现阶段不适合大型生产轨迹。
+
+没有 MPI 跨机协作、断点恢复、失联自动重派或原生系统服务。进度按完成步骤更新，不是 MD 步数百分比。原生子进程支持取消；WSL 取消在当前步骤退出后确认，步骤时限由 WSL 的 GNU `timeout` 控制。节点失联时保留运行状态避免重复计算；需检查节点本机后人工处理。CPU/RAM/GPU 是分配准入条件，不是操作系统资源隔离，线程数等科学参数仍需自行设置。工作目录不是 OS 沙箱，仅处理可信输入。
 
 ## 构建和验证
 
@@ -69,8 +73,13 @@ python scripts\smoke_exe.py dist\ChemCompute\ChemCompute.exe
 
 官方参考：[Inno Setup 编译器](https://jrsoftware.org/ishelp/topic_compilercmdline.htm)、[Tailscale 无人值守配置](https://tailscale.com/docs/how-to/run-unattended)。后者只影响联网工具，不会把 ChemCompute 变成系统服务。
 
-## 桌面操控台（0.1.1）
+## 桌面工作流（0.2.0）
 
-原生 Tk 桌面窗口随安装包提供，不需要额外安装 Python 或浏览器组件。可启动、停止、重启本机后台，查看节点 CPU/RAM/GPU 与 GROMACS 状态，打开配置/日志目录，按需复制本机管理员密钥。节点角色仅显示主控连通性，远程管理员操作仍需在 Web 控制台认证。安装时自动创建桌面快捷方式，卸载时移除，运行时数据保留。
+1. **本机与节点概览**：启动/停止/重启后台，查看 CPU、RAM、GPU、GROMACS，打开日志和配置目录。关闭窗口后后台继续运行。
+2. **节点与邀请码**：创建、查看、撤销单次邀请码；停止后台后更新本节点入网地址、名称和邀请码。
+3. **连接与 AI 设置**：连接远程主控（URL + 管理员密钥），保存 DeepSeek 密钥和模型，测试连接。留空 URL 使用本机主控；空密钥输入保留现有值。密钥通过 Windows DPAPI 加密，绑定当前账号，其他电脑需分别配置。安装包和 GitHub 不包含任何运行密钥。
+4. **提交计算包**：选择 ZIP；可含根目录 `chemcompute.json` 自动填写任务名和步骤。内置版本检查、预处理 + MD、运行已有 TPR、结构检查模板；可追加命令和参数，也可编辑步骤 JSON。最多 16 步，支持 CPU/内存/CUDA 要求、超时和优先级。
+5. **DeepSeek 建议节点**：只发送任务说明、步骤、文件名和候选节点资源摘要，不发送文件正文。AI 只能从满足条件的在线节点中选择，不能生成执行代码或修改步骤；预览后手动提交。调用按 DeepSeek 账号计费；失败时仍可自动匹配或手动选择节点。
+6. **任务中心**：刷新状态，查看步骤日志与详情，取消任务，复制已结束任务重试，下载并校验结果 ZIP。
 
-界面不自动启动计算任务；主控运行和任务分发是独立操作。复制密钥仅由按钮触发；本机后台状态与主控网络连接分开显示。关闭窗口不会停止后台。
+[桌面使用指南](docs/desktop-guide.md) 包含无 Python 安装、计算包格式、示例和限制。[DeepSeek 官方 API](https://api-docs.deepseek.com/)；默认模型可在设置里修改。
