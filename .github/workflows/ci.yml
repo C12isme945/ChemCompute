@@ -71,4 +71,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" release/* --prerelease --title "ChemCompute $TAG" --generate-notes
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already published; verified CI binaries remain in the workflow artifact."
+          else
+            gh release create "$TAG" release/* --prerelease --title "ChemCompute $TAG" --generate-notes
+          fi
