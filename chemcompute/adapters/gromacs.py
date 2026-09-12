@@ -14,12 +14,17 @@ from typing import Dict, Any, List, Callable, Optional, Tuple
 from chemcompute.adapters.base import BaseAdapter
 
 
-def win_to_wsl_path(path: Path) -> str:
+def win_to_wsl_path(path: Path | str) -> str:
     """Convert a Windows absolute path (e.g. E:\\Research\\ChemCompute) to WSL path (/mnt/e/Research/ChemCompute)."""
-    resolved = path.resolve()
-    drive = resolved.drive.replace(":", "").lower()
-    path_without_drive = resolved.as_posix().split(":", 1)[-1].lstrip("/")
-    return f"/mnt/{drive}/{path_without_drive}"
+    s = str(path).replace("\\", "/")
+    if ":" in s:
+        parts = s.split(":", 1)
+        drive = parts[0].strip().replace("/", "").lower()
+        subpath = parts[1].lstrip("/")
+        return f"/mnt/{drive}/{subpath}"
+    if s.startswith("/mnt/"):
+        return s
+    return s
 
 
 class GromacsAdapter(BaseAdapter):
@@ -65,7 +70,7 @@ class GromacsAdapter(BaseAdapter):
                 output = proc.stdout
                 ver_match = re.search(r"GROMACS version:\s*([\w\.\-]+)", output, re.IGNORECASE)
                 version = ver_match.group(1) if ver_match else "detected"
-                gpu_acc = "GPU support:\s*enabled" in output or "CUDA" in output
+                gpu_acc = bool(re.search(r"GPU support:\s*enabled", output)) or "CUDA" in output
                 is_wsl_wrap = "Ubuntu" in output or "wsl" in gmx_win.lower()
 
                 self.executable = gmx_win
@@ -99,7 +104,7 @@ class GromacsAdapter(BaseAdapter):
                 if proc.returncode == 0 and "GROMACS" in output:
                     ver_match = re.search(r"GROMACS version:\s*([\w\.\-]+)", output, re.IGNORECASE)
                     version = ver_match.group(1) if ver_match else "WSL-detected"
-                    gpu_acc = "GPU support:\s*enabled" in output or "CUDA" in output
+                    gpu_acc = bool(re.search(r"GPU support:\s*enabled", output)) or "CUDA" in output
                     self.executable = "wsl gmx"
                     self.is_wsl = True
                     self.version = version
