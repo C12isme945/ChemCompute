@@ -49,6 +49,7 @@ class Console:
                              ('停止后台', lambda: self.confirm_stop(False)),
                              ('重启后台', lambda: self.confirm_stop(True)),
                              ('打开 Web 控制台', self.open_web),
+                             ('检查更新', self.open_updates),
                              ('刷新', self.refresh)]:
             button = ttk.Button(actions, text=text, command=action)
             button.pack(side='left', padx=(0, 8))
@@ -72,12 +73,14 @@ class Console:
         self.copy_button.pack(side='left', padx=(0, 8))
         for text, folder in [('配置文件', 'config'), ('运行日志', 'logs')]:
             ttk.Button(footer, text=text, command=lambda f=folder: self.open_folder(f)).pack(side='left', padx=(0, 8))
+        ttk.Button(footer, text='在线检查更新', command=self.open_updates).pack(side='left', padx=(0, 8))
         ttk.Label(footer, text='关闭窗口后后台继续运行').pack(side='right')
         from chemcompute.desktop_workspace import Workspace
         self.workspace = Workspace(self, self.notebook)
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.timer = root.after(100, self.pump)
         self.refresh()
+        root.after(2500, lambda: self.workspace.trigger_check_updates() if hasattr(self, 'workspace') else None)
 
     def worker(self, kind, function):
         def run():
@@ -167,6 +170,11 @@ class Console:
         if url.startswith(('http://', 'https://')):
             webbrowser.open(url)
 
+    def open_updates(self):
+        if hasattr(self, 'workspace') and hasattr(self.workspace, 'update_tab'):
+            self.notebook.select(self.workspace.update_tab)
+            self.workspace.trigger_check_updates()
+
     def open_folder(self, name):
         path = Path(name).resolve()
         path.mkdir(exist_ok=True)
@@ -190,7 +198,7 @@ def run_console(smoke_test: bool = False) -> int:
         console.render({'role': 'both', 'running': False, 'online': False, 'url': 'http://127.0.0.1:8000', 'notice': 'Smoke test', 'nodes': []})
         assert console.buttons['启动后台'].winfo_exists()
         assert console.table.winfo_exists()
-        assert len(console.notebook.tabs()) == 6
+        assert len(console.notebook.tabs()) == 7
         assert console.workspace.task_tree.winfo_exists()
         root.after(100, console.close)
     root.mainloop()

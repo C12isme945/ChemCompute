@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import tempfile
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -39,11 +40,13 @@ class Workspace:
         self.invite_tab = self.tab(notebook, '节点与邀请码')
         self.settings_tab = self.tab(notebook, '连接与 AI 设置')
         self.deploy_tab = self.tab(notebook, '依赖安装')
+        self.update_tab = self.tab(notebook, '在线更新')
         self.build_tasks()
         self.build_submit()
         self.build_invites()
         self.build_settings()
         self.build_deployment()
+        self.build_updates()
 
     def tab(self, notebook, name):
         frame = ttk.Frame(notebook, padding=12)
@@ -409,3 +412,120 @@ class Workspace:
             return
         subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), *flags], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         self.console.notice.set('依赖安装已启动；请处理 Windows 权限提示，然后刷新安装状态。')
+
+    def build_updates(self):
+        self.update_info = {}
+        self.is_downloading = False
+
+        # Top info card
+        info_frame = ttk.Frame(self.update_tab)
+        info_frame.pack(fill='x', pady=(0, 12))
+
+        header_frame = ttk.Frame(info_frame)
+        header_frame.pack(fill='x', pady=4)
+
+        from chemcompute import __version__
+        ttk.Label(header_frame, text=f'当前运行版本: v{__version__}', font=('Microsoft YaHei UI', 11, 'bold')).pack(side='left')
+        self.update_version_badge = ttk.Label(header_frame, text='(点击右侧按钮检查 GitHub 官方更新)', font=('Microsoft YaHei UI', 10), foreground='#0284c7')
+        self.update_version_badge.pack(side='left', padx=12)
+
+        ttk.Button(header_frame, text='立即检查更新', command=self.trigger_check_updates).pack(side='right')
+
+        # Release details box
+        ttk.Label(self.update_tab, text='更新说明与发行日志 (Changelog):', font=('Microsoft YaHei UI', 10, 'bold')).pack(anchor='w', pady=(8, 4))
+        self.update_notes_text = tk.Text(self.update_tab, height=9, wrap='word', font=('Consolas', 10))
+        self.update_notes_text.pack(fill='both', expand=True, pady=(0, 10))
+        self.update_notes_text.insert('1.0', '点击【立即检查更新】从官方发布源获取最新版本与更新说明。')
+
+        # Actions & progress
+        action_frame = ttk.Frame(self.update_tab)
+        action_frame.pack(fill='x', pady=4)
+
+        self.btn_auto_update = ttk.Button(action_frame, text='⚡ 一键在线下载并安装更新', command=self.start_download_update, state='disabled')
+        self.btn_auto_update.pack(side='left', padx=(0, 8))
+
+        self.btn_open_github = ttk.Button(action_frame, text='🌐 前往 GitHub Release 页面', command=self.open_github_releases)
+        self.btn_open_github.pack(side='left', padx=(0, 8))
+
+        self.update_progress = ttk.Progressbar(self.update_tab, orient='horizontal', mode='determinate')
+        self.update_progress.pack(fill='x', pady=(8, 4))
+
+        self.update_status_label = ttk.Label(self.update_tab, text='', font=('Microsoft YaHei UI', 9))
+        self.update_status_label.pack(anchor='w')
+
+    def trigger_check_updates(self):
+        self.update_version_badge.configure(text='正在连接 GitHub 检查更新…', foreground='#d97706')
+        self.console.notice.set('正在连接 GitHub 官方源检查版本更新…')
+
+        def worker():
+            from chemcompute.updater.online_update import check_github_updates
+            from chemcompute import __version__
+            return check_github_updates(__version__)
+
+        def callback(res):
+            self.update_info = res
+            latest = res.get('latest_version', '')
+            has_update = res.get('has_update', False)
+
+            if res.get('status') == 'error':
+                self.update_version_badge.configure(text=f"检查失败: {res.get('error', '')}", foreground='#dc2626')
+                return
+
+            self.update_notes_text.delete('1.0', 'end')
+            notes = res.get('release_notes') or '官方暂未填写更新说明。'
+            self.update_notes_text.insert('1.0', f"【最新版本】v{latest} (发布于 {res.get('published_at')})\n【安装包资源】{res.get('asset_name')} ({res.get('asset_size', 0) / 1024 / 1024:.1f} MB)\n\n--- 发行更新日志 ---\n{notes}")
+
+            if has_update:
+                self.update_version_badge.configure(text=f'🎉 发现新版本: v{latest}！推荐更新', foreground='#16a34a')
+                self.btn_auto_update.configure(state='normal', text=f'⚡ 一键在线下载并升级至 v{latest}')
+                self.console.notice.set(f'发现新版本 v{latest}！可点击在线更新。')
+            else:
+                self.update_version_badge.configure(text=f'✓ 当前已是最新版本 (v{latest})', foreground='#16a34a')
+                self.btn_auto_update.configure(state='normal', text='⚡ 重新下载当前最新安装包')
+                self.console.notice.set('当前已是最新版本。')
+
+        self.run(worker, callback)
+
+    def start_download_update(self):
+        if not self.update_info or not self.update_info.get('download_url'):
+            messagebox.showwarning('提示', '未在发布信息中检测到可用安装包，请点击前往 GitHub 页面下载。', parent=self.root)
+            return
+
+        download_url = self.update_info['download_url']
+        asset_name = self.update_info.get('asset_name', 'ChemCompute-Setup.exe')
+        temp_dir = Path(tempfile.gettempdir())
+        dest_path = temp_dir / asset_name
+
+        self.btn_auto_update.configure(state='disabled')
+        self.update_progress['value'] = 0
+        self.update_status_label.configure(text='准备开始下载更新安装包…')
+
+        def progress_cb(pct, current, total):
+            self.root.after(0, lambda: self._update_download_progress(pct, current, total))
+
+        def worker():
+            from chemcompute.updater.online_update import download_file_stream
+            return download_file_stream(download_url, dest_path, progress_cb)
+
+        def callback(success):
+            self.btn_auto_update.configure(state='normal')
+            if success:
+                self.update_status_label.configure(text=f'✓ 下载完成: {dest_path}')
+                if messagebox.askyesno('更新就绪', f'新版本安装包已成功下载至：\n{dest_path}\n\n是否立即启动安装向导完成更新？\n(启动后将自动退出当前操控台)', parent=self.root):
+                    from chemcompute.updater.online_update import launch_installer
+                    launch_installer(dest_path)
+                    self.root.destroy()
+            else:
+                self.update_status_label.configure(text='❌ 下载失败，请检查网络或通过 GitHub 页面下载。')
+                messagebox.showerror('下载失败', '网络超时或连接中断，请重试或通过浏览器直接下载。', parent=self.root)
+
+        self.run(worker, callback)
+
+    def _update_download_progress(self, pct, current, total):
+        self.update_progress['value'] = pct
+        self.update_status_label.configure(text=f'正在下载更新包: {pct}% ({current / 1024 / 1024:.1f} MB / {total / 1024 / 1024:.1f} MB)')
+
+    def open_github_releases(self):
+        import webbrowser
+        url = self.update_info.get('html_url') if self.update_info else 'https://github.com/C12isme945/ChemCompute/releases'
+        webbrowser.open(url)
