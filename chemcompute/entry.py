@@ -59,17 +59,13 @@ def onboard(path: str) -> None:
 
 
 def desktop_run() -> int:
-    # A per-user singleton prevents duplicate tray/startup launches.
-    import hashlib
-    import socket
-
-    port = 40000 + int(hashlib.sha256(str(Path.cwd()).encode()).hexdigest()[:4], 16) % 20000
-    guard = socket.socket()
-    try:
-        guard.bind(("127.0.0.1", port))
-    except OSError:
-        return 0
     import atexit
+
+    from chemcompute.runtime_lock import acquire_runtime_lock
+    release_lock = acquire_runtime_lock()
+    if release_lock is None:
+        return 0
+    atexit.register(release_lock)
 
     from chemcompute.desktop_backend import clear_own_record, record_process
 
@@ -107,7 +103,6 @@ def desktop_run() -> int:
     else:
         while True:
             time.sleep(60)
-    guard.close()
     return 0
 
 
@@ -117,6 +112,10 @@ def main() -> int:
         os.chdir(directory)
     if len(sys.argv) > 1 and sys.argv[1] == "onboard":
         onboard(sys.argv[2])
+        return 0
+    if len(sys.argv) > 1 and sys.argv[1] == "update-finish":
+        from chemcompute.online_update import complete_update
+        complete_update(sys.argv[2])
         return 0
     if len(sys.argv) > 1 and sys.argv[1] == "desktop-run":
         return desktop_run()

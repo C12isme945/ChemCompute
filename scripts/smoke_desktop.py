@@ -18,7 +18,7 @@ def main():
     original_executable = sys.executable
     original_home = os.environ.get('CHEMCOMPUTE_HOME')
     try:
-        with tempfile.TemporaryDirectory(prefix='chemcompute-controls-') as folder:
+        with tempfile.TemporaryDirectory(prefix='chemcompute-controls-', ignore_cleanup_errors=True) as folder:
             os.environ['CHEMCOMPUTE_HOME'] = folder
             os.chdir(folder)
             root = Path(folder)

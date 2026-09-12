@@ -1,4 +1,4 @@
-#define AppVersion "0.3.0"
+#define AppVersion "0.4.0"
 [Setup]
 AppId={code:GetAppId}
 AppName=ChemCompute
@@ -100,6 +100,8 @@ var
   ExitCode: Integer;
 begin
   if CurStep = ssPostInstall then begin
+    { Online updates preserve role, enrollment, dependencies and existing runtime. }
+    if ExpandConstant('{param:UPDATE|0}') = '1' then Exit;
     Role := 'both';
     if RolePage.SelectedValueIndex = 0 then Role := 'controller';
     if RolePage.SelectedValueIndex = 1 then Role := 'node';

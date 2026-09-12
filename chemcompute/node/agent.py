@@ -94,6 +94,9 @@ class NodeAgent:
 
     def send_heartbeat(self, client: httpx.Client) -> list[JobSpec]:
         """向控制端发送一次健康心跳并接收下发的作业"""
+        from chemcompute.update_maintenance import local_intake_paused
+        if local_intake_paused():
+            return []
         if not self.config.node_id or not self.config.node_token:
             return []
 

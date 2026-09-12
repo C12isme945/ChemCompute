@@ -101,6 +101,9 @@ class TaskStore:
         identity = 'task-' + uuid.uuid4().hex
         now = time.time()
         with self.connect() as db:
+            from chemcompute.update_maintenance import check_intake
+            db.execute('BEGIN IMMEDIATE')
+            check_intake(db)
             db.execute('INSERT INTO tasks_v2(id,spec,status,node,created,updated) VALUES (?,?,?,?,?,?)',
                        (identity, json.dumps(spec.model_dump()), 'queued', spec.node_id, now, now))
         return self.get(identity)
@@ -121,7 +124,9 @@ class TaskStore:
 
     def claim(self, node):
         with self.connect() as db:
+            from chemcompute.update_maintenance import check_intake
             db.execute('BEGIN IMMEDIATE')
+            check_intake(db)
             active = db.execute("SELECT id FROM tasks_v2 WHERE node=? AND status IN ('running','recovering')", (node['node_id'],)).fetchone()
             if active:
                 return None  # Never duplicate a task after worker disconnect.

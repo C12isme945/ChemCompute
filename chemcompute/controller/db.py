@@ -381,6 +381,9 @@ class Database:
         """创建新计算作业"""
         now = utc_now_iso()
         with self._lock, self._get_connection() as conn:
+            from chemcompute.update_maintenance import check_intake
+            conn.execute('BEGIN IMMEDIATE')
+            check_intake(conn)
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -415,6 +418,9 @@ class Database:
     def get_pending_jobs_for_node(self, node_id: str) -> list[dict[str, Any]]:
         """获取指定节点待分发的作业"""
         with self._lock, self._get_connection() as conn:
+            from chemcompute.update_maintenance import check_intake
+            conn.execute('BEGIN IMMEDIATE')
+            check_intake(conn)
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -440,6 +446,9 @@ class Database:
         """将作业标记为运行中"""
         now = utc_now_iso()
         with self._lock, self._get_connection() as conn:
+            from chemcompute.update_maintenance import check_intake
+            conn.execute('BEGIN IMMEDIATE')
+            check_intake(conn)
             cursor = conn.cursor()
             cursor.execute(
                 """

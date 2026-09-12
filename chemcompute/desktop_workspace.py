@@ -46,8 +46,25 @@ class Workspace:
         self.build_deployment()
 
     def tab(self, notebook, name):
-        frame = ttk.Frame(notebook, padding=12)
-        notebook.add(frame, text=name)
+        page = ttk.Frame(notebook)
+        notebook.add(page, text=name)
+        canvas = tk.Canvas(page, background='#ffffff', highlightthickness=0)
+        vertical = ttk.Scrollbar(page, orient='vertical', command=canvas.yview)
+        horizontal = ttk.Scrollbar(page, orient='horizontal', command=canvas.xview)
+        canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        canvas.grid(row=0, column=0, sticky='nsew')
+        vertical.grid(row=0, column=1, sticky='ns')
+        horizontal.grid(row=1, column=0, sticky='ew')
+        page.rowconfigure(0, weight=1)
+        page.columnconfigure(0, weight=1)
+        frame = ttk.Frame(canvas, padding=18)
+        item = canvas.create_window(0, 0, window=frame, anchor='nw')
+        def layout(event=None):
+            canvas.itemconfigure(item, width=max(canvas.winfo_width(), frame.winfo_reqwidth()),
+                                 height=max(canvas.winfo_height(), frame.winfo_reqheight()))
+            canvas.configure(scrollregion=canvas.bbox('all'))
+        canvas.bind('<Configure>', layout)
+        frame.bind('<Configure>', layout)
         return frame
 
     def run(self, function, callback=None):

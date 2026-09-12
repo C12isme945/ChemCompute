@@ -1,19 +1,19 @@
 :root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-card: #1e293b;
-  --bg-card-hover: #273549;
-  --border-color: #334155;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --accent-blue: #38bdf8;
-  --accent-green: #4ade80;
-  --accent-yellow: #facc15;
-  --accent-red: #f87171;
-  --accent-purple: #c084fc;
+  --bg-primary: #f1f5f8;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #eaf5f4;
+  --border-color: #dce5ec;
+  --text-primary: #183249;
+  --text-secondary: #536b7e;
+  --text-muted: #607588;
+  --accent-blue: #007f82;
+  --accent-green: #157347;
+  --accent-yellow: #8a6200;
+  --accent-red: #b83c46;
+  --accent-purple: #7755a5;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --radius: 8px;
+  --radius: 12px;
 }
 
 * {
@@ -34,7 +34,7 @@ body {
 
 /* 顶部导航 */
 .navbar {
-  background-color: var(--bg-secondary);
+  background-color: #102c42;
   border-bottom: 1px solid var(--border-color);
   padding: 0.75rem 2rem;
   display: flex;
@@ -52,7 +52,12 @@ body {
 }
 
 .brand-icon {
-  font-size: 1.6rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #9cede0;
+  border: 1px solid #527a87;
+  border-radius: 10px;
+  padding: 6px 9px;
 }
 
 .brand-title {
@@ -64,7 +69,7 @@ body {
 
 .brand-badge {
   background: rgba(56, 189, 248, 0.15);
-  color: var(--accent-blue);
+  color: #9cede0;
   font-size: 0.75rem;
   padding: 2px 8px;
   border-radius: 9999px;
@@ -82,7 +87,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: #c5d6e2;
 }
 
 /* 主容器与卡片 */
@@ -110,6 +115,7 @@ body {
   align-items: center;
   gap: 1.25rem;
   transition: transform 0.2s, border-color 0.2s;
+  box-shadow: 0 4px 16px #18324905;
 }
 
 .stat-card:hover {
@@ -205,10 +211,10 @@ body {
 }
 
 .btn-primary {
-  background: #0284c7;
+  background: #007f82;
   color: #fff;
 }
-.btn-primary:hover { background: #0369a1; }
+.btn-primary:hover { background: #006467; }
 
 .btn-secondary {
   background: var(--bg-secondary);
@@ -262,7 +268,7 @@ table {
 }
 
 th {
-  background: #182234;
+  background: #edf3f7;
   color: var(--text-secondary);
   font-weight: 600;
   padding: 0.75rem 1rem;
@@ -389,7 +395,7 @@ tr:hover td {
 
 .form-control {
   width: 100%;
-  background: #0f172a;
+  background: #f8fafc;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   color: var(--text-primary);
@@ -425,4 +431,28 @@ tr:hover td {
 .empty-icon {
   font-size: 2.5rem;
   margin-bottom: 0.75rem;
+}
+
+.workspace-intro { display:flex; align-items:center; justify-content:space-between; gap:30px; padding:26px 0 30px; }
+.workspace-intro h1 { font-size:clamp(1.6rem,3vw,2.2rem); letter-spacing:-.025em; margin:10px 0; font-weight:750; }
+.workspace-intro p:not(.eyebrow) { color:var(--text-secondary); max-width:760px; font-size:.92rem; line-height:1.8; }
+.eyebrow { color:var(--accent-blue); font-size:.7rem; font-weight:750; letter-spacing:.18em; }
+.workspace-intro .btn { flex-shrink:0; text-decoration:none; padding:12px 18px; }
+.tabs-header { background:#e6edf2; border:0; padding:5px; border-radius:12px; overflow-x:auto; }
+.tab-btn { white-space:nowrap; border-radius:8px; }
+.tab-btn.active { background:white; box-shadow:0 2px 6px #1832490d; }
+.tab-btn.active::after { display:none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #007f82; outline-offset:3px; }
+tr:hover td { background:#f4f9fa; }
+.progress-bar-container { background:#dce7ed; }
+@media(max-width:760px) {
+ .navbar { position:relative; flex-wrap:wrap; gap:12px; padding:16px; }
+ .brand { flex-wrap:wrap; }
+ .brand-title { font-size:1rem; }
+ .workspace-intro { align-items:flex-start; flex-direction:column; gap:18px; }
+ .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+ .stat-card { padding:14px; gap:10px; }
+ .stat-icon { display:none; }
+ .panel-header { gap:12px; flex-wrap:wrap; }
+ .container { padding:0 16px; }
 }
