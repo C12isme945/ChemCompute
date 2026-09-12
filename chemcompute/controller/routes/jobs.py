@@ -1,194 +1,185 @@
-"""
-Job lifecycle, submission, agent polling, and results REST API endpoints.
-"""
+"""ChemCompute GROMACS 作业任务调度与状态回传路由"""
 
-import json
+from __future__ import annotations
+
+import logging
+import re
 import uuid
-from pathlib import Path
-from typing import List, Optional
-from fastapi import APIRouter, Header, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from chemcompute.common.models import (
-    JobDetail,
-    JobSubmission,
-    JobProgressUpdate,
-    JobStatus,
+    JobCreateRequest,
+    JobItem,
+    JobStatusUpdateRequest,
 )
-from chemcompute.common.security import hash_token
+from chemcompute.controller.db import Database
+from chemcompute.controller.routes.auth import get_db, verify_admin
 
-router = APIRouter(prefix="/api", tags=["jobs"])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
+
+# GROMACS 允许执行的严格安全白名单子命令
+ALLOWED_GROMACS_SUBCOMMANDS = {
+    "version",
+    "check",
+    "grompp",
+    "mdrun",
+    "editconf",
+    "solvate",
+    "genion",
+    "energy",
+}
+
+# 危险字符匹配正则：禁止任意管道、重定向、换行或命令链接符号、空字符
+SHELL_METACHUTE_PATTERN = re.compile(r"[;&|`$<>\r\n\0]")
+# 路径穿越模式防御：禁止父目录遍历
+PATH_TRAVERSAL_PATTERN = re.compile(r"(\.\.[/\\]|[/\\]\.\.|^\.\.$)")
 
 
-@router.post("/jobs", response_model=JobDetail)
-async def submit_job(
-    request: Request,
-    bundle: Optional[UploadFile] = File(None),
-    metadata: Optional[str] = Form(None)
-):
-    """
-    Submit a calculation job.
-    Supports either multipart form (bundle + metadata JSON) or JSON body.
-    """
-    db = request.app.state.db
-    storage_root: Path = request.app.state.storage_root
+def validate_job_arguments(subcommand: str, arguments: list[str]) -> None:
+    """校验作业子命令与参数格式安全性，杜绝任意系统调用注入"""
+    subcmd_clean = subcommand.strip().lower()
+    if subcmd_clean not in ALLOWED_GROMACS_SUBCOMMANDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"非法 GROMACS 子命令 '{subcommand}'。仅允许白名单指令: {sorted(ALLOWED_GROMACS_SUBCOMMANDS)}",
+        )
 
-    # Parse metadata
-    if metadata:
-        meta_dict = json.loads(metadata)
-        submission = JobSubmission.model_validate(meta_dict)
-    else:
-        # Check if raw JSON body
-        body = await request.json()
-        submission = JobSubmission.model_validate(body)
+    for arg in arguments:
+        if not isinstance(arg, str):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="作业参数必须全部为纯文本字符串",
+            )
+        if SHELL_METACHUTE_PATTERN.search(arg):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"参数中检测到禁止的特殊字符或命令注入模式: '{arg}'",
+            )
+        if PATH_TRAVERSAL_PATTERN.search(arg):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"参数中检测到越界路径穿越风险 (..): '{arg}'",
+            )
 
-    job_id = f"job-{uuid.uuid4().hex[:8]}"
 
-    # Save bundle if uploaded, or fallback to standard calculation template
-    bundle_path_str = None
-    bundles_dir = storage_root / "bundles"
-    bundles_dir.mkdir(parents=True, exist_ok=True)
+@router.post("", response_model=JobItem)
+async def create_job(
+    payload: JobCreateRequest,
+    _: bool = Depends(verify_admin),
+    db: Database = Depends(get_db),
+) -> JobItem:
+    """管理员分发 GROMACS 计算作业至目标节点"""
+    validate_job_arguments(payload.subcommand, payload.arguments)
 
-    if bundle:
-        dest_path = bundles_dir / f"{job_id}.zip"
-        content = await bundle.read()
-        dest_path.write_bytes(content)
-        bundle_path_str = str(dest_path)
-    else:
-        # Check template fallback
-        template_id = submission.parameters.get("template_id")
-        if not template_id and submission.adapter == "gromacs":
-            template_id = "gromacs-water-smoke"
-        elif not template_id and submission.adapter == "orca":
-            template_id = "orca-water-sp"
+    node = db.get_node(payload.node_id)
+    if not node:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"目标节点 '{payload.node_id}' 不存在",
+        )
 
-        if template_id:
-            from chemcompute.controller.routes.templates import TEMPLATES_CATALOG
-            matched = next((t for t in TEMPLATES_CATALOG if t["id"] == template_id), None)
-            if matched:
-                dest_path = bundles_dir / f"{job_id}.zip"
-                import zipfile
-                with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as z:
-                    for fname, fcontent in matched["file_previews"].items():
-                        z.writestr(fname, fcontent)
-                bundle_path_str = str(dest_path)
-
-    job = db.create_job(
+    job_id = f"job-{uuid.uuid4().hex[:12]}"
+    job_record = db.create_job(
         job_id=job_id,
-        name=submission.name,
-        adapter=submission.adapter,
-        requirements=submission.requirements,
-        parameters=submission.parameters,
-        bundle_path=bundle_path_str,
-        priority=submission.priority
+        node_id=payload.node_id,
+        subcommand=payload.subcommand.strip().lower(),
+        arguments=payload.arguments,
+        timeout_seconds=payload.timeout_seconds,
+        description=payload.description,
     )
-    return job
+
+    db.add_audit_log(
+        "admin",
+        "DISPATCH_JOB",
+        f"向节点 {payload.node_id} 分发作业 {job_id}: gmx {payload.subcommand}",
+    )
+
+    return JobItem(
+        job_id=job_id,
+        node_id=payload.node_id,
+        node_name=node.get("name"),
+        subcommand=job_record["subcommand"],
+        arguments=job_record["arguments"],
+        status=job_record["status"],
+        created_at=job_record["created_at"],
+        description=job_record["description"],
+    )
 
 
-@router.get("/jobs", response_model=List[JobDetail])
-def list_jobs(request: Request):
-    db = request.app.state.db
-    return db.list_jobs()
+@router.get("", response_model=list[JobItem])
+async def list_jobs(
+    limit: int = 50,
+    _: bool = Depends(verify_admin),
+    db: Database = Depends(get_db),
+) -> list[JobItem]:
+    """获取全平台历史及进行中作业记录"""
+    jobs = db.list_jobs(limit=limit)
+    return [JobItem(**j) for j in jobs]
 
 
-@router.get("/jobs/{job_id}", response_model=JobDetail)
-def get_job(job_id: str, request: Request):
-    db = request.app.state.db
+@router.get("/{job_id}", response_model=JobItem)
+async def get_job_detail(
+    job_id: str,
+    _: bool = Depends(verify_admin),
+    db: Database = Depends(get_db),
+) -> JobItem:
+    """获取单个作业执行详情与日志"""
     job = db.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    return job
+        raise HTTPException(status_code=404, detail="作业不存在")
+    return JobItem(**job)
 
 
-@router.get("/jobs/{job_id}/bundle")
-def download_bundle(job_id: str, request: Request):
-    db = request.app.state.db
-    job = db.get_job(job_id)
-    if not job or not job.bundle_path:
-        raise HTTPException(status_code=404, detail="No bundle found for this job.")
-
-    path = Path(job.bundle_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Bundle file missing on disk.")
-
-    return FileResponse(path, media_type="application/zip", filename=f"{job_id}_input.zip")
-
-
-@router.post("/jobs/{job_id}/progress")
-def update_progress(
+@router.post("/{job_id}/status")
+async def update_job_status(
     job_id: str,
-    update: JobProgressUpdate,
-    request: Request,
-    authorization: Optional[str] = Header(None),
-    x_node_id: Optional[str] = Header(None)
-):
-    db = request.app.state.db
-    db.update_job_progress(
+    payload: JobStatusUpdateRequest,
+    authorization: Annotated[str | None, Header()] = None,
+    db: Database = Depends(get_db),
+) -> dict[str, str]:
+    """计算节点执行完毕后上报执行状态与截断日志"""
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="作业不存在")
+
+    node_id = job["node_id"]
+
+    # 验证节点令牌
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="节点认证缺失",
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    if not db.verify_node_token(node_id, token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无权修改该作业状态（节点凭据无效）",
+        )
+
+    # 日志大小防御截断 (最大存储 500KB)
+    max_log_len = 500_000
+    stdout_trimmed = (payload.stdout[:max_log_len] + "\n...[已截断]") if payload.stdout and len(payload.stdout) > max_log_len else payload.stdout
+    stderr_trimmed = (payload.stderr[:max_log_len] + "\n...[已截断]") if payload.stderr and len(payload.stderr) > max_log_len else payload.stderr
+
+    db.update_job_status(
         job_id=job_id,
-        status=update.status,
-        progress_pct=update.progress_pct,
-        log_chunk=update.log_chunk,
-        error_message=update.error_message
+        node_id=node_id,
+        status=payload.status,
+        exit_code=payload.exit_code,
+        stdout=stdout_trimmed,
+        stderr=stderr_trimmed,
+        error_message=payload.error_message,
     )
-    return {"status": "ok"}
 
+    db.add_audit_log(
+        f"node:{node_id}",
+        "JOB_STATUS_UPDATE",
+        f"作业 {job_id} 状态更新为 {payload.status} (exit_code: {payload.exit_code})",
+    )
 
-@router.post("/jobs/{job_id}/results")
-async def upload_results(
-    job_id: str,
-    request: Request,
-    file: UploadFile = File(...),
-    authorization: Optional[str] = Header(None),
-    x_node_id: Optional[str] = Header(None)
-):
-    db = request.app.state.db
-    storage_root: Path = request.app.state.storage_root
-
-    results_dir = storage_root / "results"
-    results_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = results_dir / f"{job_id}_results.zip"
-
-    content = await file.read()
-    dest_path.write_bytes(content)
-
-    db.set_job_result_path(job_id, str(dest_path))
-    return {"status": "uploaded", "path": str(dest_path)}
-
-
-@router.get("/jobs/{job_id}/results")
-def download_results(job_id: str, request: Request):
-    db = request.app.state.db
-    job = db.get_job(job_id)
-    if not job or not job.result_archive:
-        raise HTTPException(status_code=404, detail="No results archive found for this job.")
-
-    path = Path(job.result_archive)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Result archive missing on disk.")
-
-    return FileResponse(path, media_type="application/zip", filename=f"{job_id}_results.zip")
-
-
-@router.get("/agent/jobs/poll")
-def agent_poll_job(
-    request: Request,
-    authorization: Optional[str] = Header(None),
-    x_node_id: Optional[str] = Header(None)
-):
-    """Agent polls for next assigned job."""
-    db = request.app.state.db
-    token = ""
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-
-    if not x_node_id or not token:
-        raise HTTPException(status_code=401, detail="Missing node credentials.")
-
-    if not db.verify_node_token(x_node_id, hash_token(token)):
-        raise HTTPException(status_code=401, detail="Invalid node credentials.")
-
-    assigned_job = db.get_assigned_job_for_node(x_node_id)
-    if not assigned_job:
-        return {}
-
-    return assigned_job.model_dump()
+    return {"status": "ok", "job_id": job_id}

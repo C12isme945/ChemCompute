@@ -27,8 +27,10 @@ def runtime_home() -> Path:
 
 
 def onboard(path: str) -> None:
-    from chemcompute.common.security import generate_invite_code
-    from chemcompute.controller.database import Database
+    from datetime import datetime, timedelta, timezone
+
+    from chemcompute.common.security import generate_invite_code, hash_secret
+    from chemcompute.controller.db import Database
 
     ini = configparser.ConfigParser(interpolation=None)
     raw = Path(path).read_bytes()
@@ -39,11 +41,8 @@ def onboard(path: str) -> None:
         raise ValueError("Invalid role")
     ensure_secure_directory("config")
     ensure_secure_directory("data")
-    if role in {"controller", "both"}:
-        from chemcompute.common.security import load_or_create_runtime_admin_secret
-        load_or_create_runtime_admin_secret()
-        if not Path("config/controller.yaml").exists():
-            save_yaml_config(ControllerConfig(host=v.get("host", "127.0.0.1")), "config/controller.yaml")
+    if role in {"controller", "both"} and not Path("config/controller.yaml").exists():
+        save_yaml_config(ControllerConfig(host=v.get("host", "127.0.0.1")), "config/controller.yaml")
     if role in {"node", "both"} and not Path("config/node.yaml").exists():
         invite = v.get("invite", "") or None
         url = v.get("url", "http://127.0.0.1:8000")
@@ -52,13 +51,15 @@ def onboard(path: str) -> None:
             url = f"http://{cfg.host}:{cfg.port}"
             invite = generate_invite_code()
             db = Database(cfg.db_path)
-            db.create_invite_code(invite, max_uses=10)
+            db.create_invite(hash_secret(invite), invite[:12] + "...",
+                             (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(), "Local onboarding")
         save_yaml_config(NodeConfig(controller_url=url, invite_code=invite,
                                     node_name=v.get("name", "")), "config/node.yaml")
     Path("role.json").write_text(json.dumps({"role": role}), encoding="utf-8")
 
 
 def desktop_run() -> int:
+    # A per-user singleton prevents duplicate tray/startup launches.
     import hashlib
     import socket
 
@@ -78,38 +79,31 @@ def desktop_run() -> int:
     logging.basicConfig(filename="logs/desktop.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
     role = json.loads(Path("role.json").read_text("utf-8"))["role"]
-    if role in {"controller", "both"}:
-        from chemcompute.common.security import load_or_create_runtime_admin_secret
-        load_or_create_runtime_admin_secret()
-
     if role in {"node", "both"}:
+        from chemcompute.node.agent import NodeAgent
+
         def node_loop():
-            from chemcompute.agent.daemon import AgentDaemon
             while True:
                 try:
                     cfg = load_yaml_config("config/node.yaml", NodeConfig)
-                    daemon = AgentDaemon(
-                        controller_url=cfg.controller_url,
-                        config_path=Path("config/node_agent.json"),
-                        workspace_dir=Path("data/workspace"),
-                        node_name=cfg.node_name,
-                        heartbeat_interval=2.0,
-                        agent_version="0.3.0"
-                    )
-                    if cfg.invite_code and not daemon.node_id:
-                        daemon.enroll(cfg.invite_code)
-                    daemon.run_loop()
+                    NodeAgent(cfg, "config/node.yaml").run()
                 except Exception:
-                    logging.exception("Node stopped; retrying in 10 seconds")
-                time.sleep(10)
+                    logging.exception("Node stopped; retrying in 15 seconds")
+                time.sleep(15)
 
         threading.Thread(target=node_loop, daemon=True).start()
     if role in {"controller", "both"}:
+        from chemcompute.tunnel import start_configured_tunnel
+        try:
+            start_configured_tunnel()
+        except Exception:
+            logging.exception("Configured public tunnel unavailable")
         import uvicorn
-        from chemcompute.controller.app import app
+
+        from chemcompute.controller.app import create_app
 
         cfg = load_yaml_config("config/controller.yaml", ControllerConfig)
-        uvicorn.run(app, host=cfg.host, port=cfg.port, log_config=None)
+        uvicorn.run(create_app(cfg), host=cfg.host, port=cfg.port, log_config=None)
     else:
         while True:
             time.sleep(60)

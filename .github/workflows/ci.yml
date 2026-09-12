@@ -17,7 +17,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements-dev.txt
-      - run: ruff check . --exit-zero
+      - run: ruff check .
       - run: python -m pytest -q
   windows:
     needs: test
@@ -77,8 +77,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release already published; updating release assets with --clobber..."
-            gh release upload "$TAG" release/* --clobber
+            echo "Release already published; verified CI binaries remain in the workflow artifact."
           else
             gh release create "$TAG" release/* --prerelease --title "ChemCompute $TAG" --generate-notes
           fi

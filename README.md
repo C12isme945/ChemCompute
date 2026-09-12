@@ -1,168 +1,98 @@
-<p align="center">
-  <img src="chemcompute/controller/static/logo.png" width="160" alt="ChemCompute Logo" style="border-radius: 24px; box-shadow: 0 10px 30px rgba(6, 182, 212, 0.3);" />
-</p>
+# ChemCompute
 
-<h1 align="center">ChemCompute</h1>
-<p align="center"><strong>面向现代化学模拟、材料计算与多物理场仿真的私有分布式智能算力调度平台</strong></p>
+将 Windows 电脑接入私人化学计算网络的开源 MVP。包含 Inno Setup 安装器、FastAPI/SQLite 控制端、中文 Web Console、后台节点代理、GROMACS 与 Gaussian 适配器。MIT 许可。
 
-<p align="center">
-  <a href="https://github.com/C12isme945/ChemCompute/releases/tag/v0.3.0">
-    <img src="https://img.shields.io/badge/Release-v0.3.0-06b6d4?style=for-the-badge&logo=github" alt="GitHub Release v0.3.0" />
-  </a>
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20WSL2%20Linux-blue?style=for-the-badge" alt="Platform" />
-  <img src="https://img.shields.io/badge/Engines-GROMACS%20%7C%20ORCA%20%7C%20COMSOL-indigo?style=for-the-badge" alt="Engines" />
-</p>
+**这是 0.3.0 预发布版。Windows 安装包已内置 Python 与 Tk，目标电脑不需要另装 Python。** 安装页面默认勾选 WSL、GROMACS 和匹配的显示驱动安装，可分别取消。程序通过在线官方/发行版源安装依赖，安装器不包含商业软件或许可证。Gaussian 使用节点已有授权安装。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。两个逻辑节点的并发分配已测试；不同物理电脑的吞吐量和无人登录开机运行尚未验证。
 
-<p align="center">
-  <img src="chemcompute/controller/static/hero_dashboard.jpg" width="850" alt="ChemCompute Interface Preview" style="border-radius: 12px; border: 1px solid #1f2937; box-shadow: 0 20px 40px rgba(0,0,0,0.8);" />
-</p>
+## 安装与第一次运行
 
----
+1. 从 GitHub Releases 下载 `ChemCompute-Setup.exe`，对照 `SHA256SUMS.txt` 校验。安装包尚未代码签名。
+2. 双击安装，选择 Controller、Compute node 或 Both。首次尝试选择 Both，即可在本机自动注册节点。
+3. Controller 默认监听 `127.0.0.1:8000`。若其他电脑需要加入，请填本机 Tailscale IP，并在节点上填对应 URL 与控制台生成的单次邀请码。
+4. 安装后自动创建桌面和开始菜单的 `ChemCompute Console` 快捷方式。打开原生桌面操控台，点击“启动后台”，即可查看连接状态和节点列表。新版任务中心、计算包上传、结果下载、邀请码及 AI 设置均可在桌面端完成。仅使用旧版 Web 页面时，管理员密钥在 `%LOCALAPPDATA%\ChemComputeData\data\chemcompute-admin.secret`，用记事本打开后粘贴到登录框。
+5. 在控制台查看节点 CPU、RAM、GPU 与软件探测，生成/撤销邀请码，创建 GROMACS 作业并查看状态和日志。
 
-> **ChemCompute** 旨在让科研团队与个人计算者无需采购昂贵超算机时，一键将宿舍电脑、实验室工作站或云端 GPU 机器汇聚为专属、无人值守的科研计算集群。
-> 最新正式版安装包现已发布至 GitHub Release：
-> 👉 **[点击下载最新发布包 ChemCompute-Setup.exe (v0.3.0)](https://github.com/C12isme945/ChemCompute/releases/tag/v0.3.0)**
-> `SHA256: 5e75044bf8297a52ae324616a89d1175a877d20037c6f1f35ab39d831f7e169a`
+默认安装至当前用户目录，不要求管理员权限。可选“登录时启动”使用当前用户启动项；**不是原生 Windows Service，不保证注销后或登录前运行**。安装包不自动修改防火墙、SSH 或 Tailscale 登录。
 
----
+默认本机角色为主控 + 计算节点。本部署的远程入口为 `https://chemcompute.666945726.xyz`，由本机 Cloudflare Tunnel 连接，不把域名当作监听 IP。远程电脑选择 Compute node，输入该 URL 与单次邀请码。
 
-## 核心架构
+配置、数据库、日志保存在 `%LOCALAPPDATA%\ChemComputeData`，升级保留已有配置。卸载删除程序与启动项，保留数据以便恢复。更换角色或主控地址需编辑 `config/*.yaml` 后重启程序。停止/重启后台可在桌面操控台操作；关闭桌面窗口后后台继续运行。升级/卸载前先停止后台并确认没有计算任务。旧版 0.1.0 未记录进程身份，首次升级前请在任务管理器退出旧程序。
 
-```
-                 ┌─────────────────────────────┐
-                 │    ChemCompute Controller   │
-                 │   Web 控制台 / REST 调度器  │
-                 │   http://<主控IP>:8000      │
-                 └──────────────┬──────────────┘
-                                │ (Tailscale / 局域网 / 外网)
-                     邀请码认证 CC-XXXXXX
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        ▼                       ▼                       ▼
- ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
- │  Node-3060   │        │  Node-Lab01  │        │ Node-Cloud40 │
- │  RTX 3060    │        │  CPU 64 核   │        │ RTX 4090     │
- ├──────────────┤        ├──────────────┤        ├──────────────┤
- │ ChemCompute  │        │ ChemCompute  │        │ ChemCompute  │
- │    Agent     │        │    Agent     │        │    Agent     │
- └──────┬───────┘        └──────┬───────┘        └──────┬───────┘
-        │                       │                       │
-   GROMACS (GPU)           ORCA / CPU             GROMACS (GPU)
+## 网络部署
+
+主控和节点加入同一个受控 Tailscale 网络；先完成各自登录，然后将主控监听 IP 改为其 Tailscale IP。此 MVP 的 HTTP 不提供 TLS，**只用于本机或加密的 Tailscale 链路**，其他网络必须另行配置 HTTPS 反向代理。限制 tailnet ACL；不要映射到公网。
+
+可选脚本（仅检测时不修改系统）：
+
+```powershell
+.\scripts\network.ps1
+.\scripts\network.ps1 -InstallTailscale
+.\scripts\network.ps1 -ConnectTailscale
+# 仅在确实需要 SSH 时，以管理员 PowerShell 运行：
+.\scripts\network.ps1 -EnableOpenSSH
 ```
 
----
+SSH 并不是代理工作的前提。脚本将新建 SSH 规则限制到 Tailscale IPv4 地址段；仍需用 Tailscale ACL 和 SSH 账号权限限制访问。
 
-## 角色区分与快速上手指南
+## 源码运行
 
-ChemCompute 明确划分为三大角色，下载后无需复杂配置：
+需要 Python 3.12。以下命令在仓库根目录执行：
 
-| 角色身份 | 适用人群与机器 | 运行方式 | 职责与权限 |
-| :--- | :--- | :--- | :--- |
-| **👑 主控管理员 (Admin)** | 课题组长 / 实验室管网员 / 拥有长期开机电脑 | 双击 `启动-管理员主控台.bat` 或运行 `python main.py` 选 1 | 启动调度中心，掌握**管理员密钥**，管理节点与灰度更新 |
-| **💻 普通计算节点 (Worker)** | 组员电脑 / 宿舍游戏本 / 实验室 GPU 服务器 | 双击 `启动-普通计算节点.bat` 或运行 `ChemCompute-Setup.exe` | 填入管理员密钥加入集群，后台默默贡献 CPU/GPU 算力 |
-| **🔬 科研作业提交者 (Submitter)** | 需要算分子动力学或量化的组员与研究生 | 浏览器直接访问管理员给的 Web 网址 (如 `http://<IP>:8000`) | 无需安装复杂环境，在 Web 界面**选用官方范本**或传文件投任务 |
-
----
-
-### 1. 管理员：启动主控端并复制【管理员密钥】
-在管理员主机上，直接双击根目录下：
-👉 **`启动-管理员主控台.bat`** (或命令行 `uv run python scripts/start_controller.py`)
-
-终端与浏览器控制台将自动启动：
-- **控制台地址**：`http://127.0.0.1:8000` (或局域网 IP `http://192.168.x.x:8000`)
-- **复制管理员密钥**：
-  - **在 Web 界面顶部**：右上角常驻 **【🔑 管理员密钥: CC-XXXXXX】** 快捷卡片，点击即可一键复制密钥或完整加入指令！
-  - **在启动终端中**：启动成功后终端居中打印醒目的管理员密钥与节点接入命令。
-
----
-
-### 2. 普通节点：输入管理员密钥加入集群
-想要贡献算力的电脑上，直接双击：
-👉 **`启动-普通计算节点.bat`**
-- 提示输入主控端地址（默认回车为 `http://127.0.0.1:8000`，或输入管理员电脑的局域网 IP）；
-- 提示输入管理员给您的 **【管理员密钥 (如 CC-XXXXXX)】**；
-- 节点将自动完成硬件探测（GPU/CUDA/WSL/CPU/RAM）并接入集群待命。
-
----
-
-### 3. 科研提交者：使用计算输入文件范本
-在 Web 控制台点击 **“新建作业”**：
-- **⚡ 一键载入官方范本**：窗口内直接提供 **💧 GROMACS 水分子动力学** 与 **🧪 ORCA 几何优化** 范本，点击 **【一键填入】** 即可免传压缩包直接确认提交！
-- **📥 下载标准范本压缩包**：点击 **【下载范本.zip】** 即可把标准文件结构下载到本地参考或修改；
-- **📁 输入包目录规范说明**：窗口提供可折叠规范指引，明确 `.mdp`、`.gro`、`.top` 或编译好的 `.tpr` 文件命名要求。
-
----
-
-## 目录与组件说明
-
-```
-ChemCompute/
-├── chemcompute/
-│   ├── common/             # 数据模型 (Pydantic)、发布 Manifest、灰度通道定义
-│   ├── controller/         # FastAPI 服务端、发布中心、WebSocket 网关、调度器
-│   │   ├── routes/         # nodes, jobs, enroll, updates (发布管理与通道晋级)
-│   │   ├── websocket.py    # 双向实时广播网关 (节点推送与控制台订阅)
-│   │   └── static/         # 现代化 Web 控制台 (Grid 计算网关 + Updates 灰度发布页面)
-│   ├── agent/              # 节点守护进程、硬件采集、沙箱执行器
-│   │   ├── plugin_manager.py # 算力适配器独立插件管理器 (免重启动态热重载)
-│   │   ├── config_manager.py # 动态配置中心 (node.yaml 实时热推送生效)
-│   │   └── update_client.py  # 任务感知更新客户端 (WebSocket 推送 + 兜底轮询)
-│   ├── updater/            # 独立双进程更新器 (SHA256 校验、原子替换与自动回滚)
-│   └── adapters/           # 软件计算适配器 (GROMACS, ORCA 等动态插件)
-├── installer/
-│   ├── chemcompute_setup.iss # Inno Setup 7 编译脚本
-│   └── bootstrapper.ps1      # 交互式 PowerShell 一键自检与入网安装脚本
-├── scripts/
-│   ├── start_controller.py   # 主控服务启动入口
-│   ├── start_agent.py        # 节点守护进程启动入口 (支持 --channel 与 --version)
-│   ├── run_updater.py        # 独立更新进程入口 (ChemComputeUpdater)
-│   ├── build_agent_exe.py    # PyInstaller 单体 exe 打包脚本
-│   ├── build_installer.ps1   # 完整自动化打包流水线
-│   ├── e2e_verify.py         # GROMACS 计算端到端验证脚本
-│   └── e2e_verify_update.py  # 三层热更新与灰度发布全流程端到端联调脚本
-└── dist/
-    ├── ChemCompute-Setup-0.1.0.exe           # Windows 图形化安装包
-    ├── ChemCompute-Node-Portable-v0.1.0.zip   # 绿色免安装发布包
-    └── ChemComputeAgent/                     # 独立运行的 Agent 可执行文件
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m chemcompute.cli setup --role both
+.\.venv\Scripts\python -m chemcompute.cli controller run
+# 另一终端生成邀请码，在节点配置填入邀请码后运行：
+.\.venv\Scripts\python -m chemcompute.cli controller invite create
+.\.venv\Scripts\python -m chemcompute.cli node run
 ```
 
----
+安装版运行时位置也可通过 `CHEMCOMPUTE_HOME` 指定（用于测试/隔离实例）。示例配置在 `examples/`，不要把实际邀请码或令牌提交到 Git。
 
-## 三层热更新与灰度发布体系 (Hot Update & Phased Rollout)
+## GROMACS 范围
 
-系统采用专为科学计算集群设计的原生三层热更新体系：
+检测 PATH 或配置中的原生 `gromacs_custom_path`，无原生 EXE 时检测默认 WSL 发行版中的 GROMACS，执行真实 `gmx --version`。WSL 使用独立参数调用，不拼接 bash 命令。支持受限的 `check/grompp/mdrun/editconf/solvate/genion/energy` 子命令，传递参数列表，禁止 shell、目录逃逸，限制超时并保留最多 500 KB stdout/stderr。命令 `version` 映射到 `gmx --version`。
 
-1. **第一层：Agent 核心更新 (双进程架构 + 自动回滚)**：
-   - 节点采用 `agent/current`（运行版）、`agent/previous`（稳定回滚版）与 `agent/staging`（暂存验证版）三态目录。
-   - 独立 `ChemComputeUpdater` 进程负责下载新版、校验 SHA256、等待原进程退出、原子目录替换并启动新版本。
-   - 启动后实施 30~60 秒健康探针检查；若新版本崩溃或无法响应，**自动无损回滚**并重新拉起 `previous/` 稳定版，杜绝远端机器离线。
+新版桌面任务使用独立的 `/api/v2` 队列：上传 ZIP，预览步骤，选择资源要求及节点，提交后由节点拉取计算包，逐步执行并上传结果。心跳线程独立运行，单节点一次执行一个新版任务。旧 Web `/api/v1` 作业界面保持兼容；不要同时用两种队列调度同一节点。
 
-2. **第二层：Adapter 算力插件热更新 (免重启)**：
-   - 适配器作为独立 zip 插件包（如 `orca-adapter-5.0.4.zip`）进行分发。
-   - Agent 内置 `PluginManager`，只要对应适配器当前无正在运行的计算作业，即可就地解压并使用 `importlib` 动态热重载，**完全无需重启 Agent 守护进程**。
+计算包上限 100 MiB、展开上限 512 MiB、最多 2000 文件，压缩比不超过 200；拒绝目录穿越、链接、加密 ZIP、Windows 危险名称、重复名称和 CRC 错误。计算结果采用不压缩 ZIP，所含文件总量因此也需小于约 100 MiB。超限任务会失败，文件保留在节点本机。现阶段不适合大型生产轨迹。
 
-3. **第三层：配置热推送 (Config Push)**：
-   - 支持通过 WebSocket 或心跳下发资源占用阈值（`max_cpu_percent`, `max_gpu_jobs`）、计算允许窗口（`allowed_hours`）及通道策略，实时应用并持久化到 `config/node.yaml`。
+支持跨节点独立任务/副本分配，以及失联后的原节点恢复；不支持把一个 MPI/Linda 作业跨互联网拆到多台电脑或原生系统服务。进度按完成步骤更新，不是 MD 步数百分比。原生子进程支持取消；WSL 取消在当前步骤退出后确认，步骤时限由 WSL 的 GNU `timeout` 控制。运行租约到期后进入 recovering。节点重连会恢复租约、重放本地持久记录并补传结果；代理意外重启时先确认旧计算进程结束，再从 GROMACS 检查点续算。缺失检查点、Gaussian 进程中断等情况保留文件并要求人工处理。不会仅凭超时把仍可能运行的任务重派到另一台电脑。CPU/RAM/GPU 是分配准入条件，不是操作系统资源隔离，线程数等科学参数仍需自行设置。工作目录不是 OS 沙箱，仅处理可信输入。
 
-4. **任务感知更新机制 (Task-Aware Update)**：
-   - 专门针对 GROMACS 长周期 MD 模拟优化：若收到更新时节点处于 `BUSY` 计算状态，系统绝不中断任务，而是标记为 `pending_update`，待计算收尾且结果安全上传后再无缝交接更新。
+## 构建和验证
 
-5. **灰度发布流转 (Canary -> Beta -> Stable)**：
-   - 支持按节点设置 `Canary`（个人主机先行测试）、`Beta`（实验室小批量）、`Stable`（全量生产）发布通道。
-   - Web 控制台提供一键晋级、单节点定向强制推送及全网灰度批量升级。
-
----
-
-## 自动化测试与验证
-
-本项目包含完整的自动化测试集：
-```bash
-# 运行单元与集成测试 (17 个测试全部通过)
-uv run pytest tests/ -v
-
-# 运行三层热更新与灰度发布全链路自动化联调
-uv run python scripts/e2e_verify_update.py
-
-# 运行 GROMACS 真机端到端全流程验证
-uv run python scripts/e2e_verify.py
+```powershell
+python -m pip install -r requirements-dev.txt
+ruff check .
+python -m pytest -q
+# 安装官方 Inno Setup 6，然后：
+.\scripts\build.ps1 -Python python -ISCC 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+python scripts\smoke_exe.py dist\ChemCompute\ChemCompute.exe
 ```
+
+输出：`dist/ChemCompute-Setup.exe` 和 `dist/SHA256SUMS.txt`。构建步骤可重复执行，但不承诺二进制逐字节相同。GitHub Actions 会在 Linux/Windows 测试，在 Windows 打包并运行 EXE 端到端检查；推送 `v*` 标签会发布预发行版。详见 [架构](docs/architecture.md)、[发布说明](docs/releasing.md) 与 [安全边界](SECURITY.md)。
+
+官方参考：[Inno Setup 编译器](https://jrsoftware.org/ishelp/topic_compilercmdline.htm)、[Tailscale 无人值守配置](https://tailscale.com/docs/how-to/run-unattended)。后者只影响联网工具，不会把 ChemCompute 变成系统服务。
+
+## 桌面工作流（0.3.0）
+
+1. **本机与节点概览**：启动/停止/重启后台，查看 CPU、RAM、GPU、GROMACS，打开日志和配置目录。关闭窗口后后台继续运行。
+2. **节点与邀请码**：创建、查看、撤销单次邀请码；停止后台后更新本节点入网地址、名称和邀请码。
+3. **连接与 AI 设置**：连接远程主控（URL + 管理员密钥），保存 DeepSeek 密钥和模型，测试连接。留空 URL 使用本机主控；空密钥输入保留现有值。密钥通过 Windows DPAPI 加密，绑定当前账号，其他电脑需分别配置。安装包和 GitHub 不包含任何运行密钥。
+4. **提交计算包**：选择 ZIP；可含根目录 `chemcompute.json` 自动填写任务名和步骤。内置版本检查、预处理 + MD、运行已有 TPR、结构检查模板；可追加命令和参数，也可编辑步骤 JSON。最多 16 步，支持 CPU/内存/CUDA 要求、超时和优先级。
+5. **DeepSeek 建议节点**：只发送任务说明、步骤、文件名和候选节点资源摘要，不发送文件正文。AI 只能从满足条件的在线节点中选择，不能生成执行代码或修改步骤；预览后手动提交。调用按 DeepSeek 账号计费；失败时仍可自动匹配或手动选择节点。
+6. **任务中心**：刷新状态，查看步骤日志与详情，取消任务，复制已结束任务重试，下载并校验结果 ZIP。
+
+[桌面使用指南](docs/desktop-guide.md) 包含无 Python 安装、计算包格式、示例和限制。[DeepSeek 官方 API](https://api-docs.deepseek.com/)；默认模型可在设置里修改。
+
+
+## 0.3.0：Gaussian、依赖安装与恢复
+
+Gaussian 任务选择 `gaussian`，上传含 `.gjf` 或 `.com` 的 ZIP，步骤为 `{"subcommand":"run","arguments":["input.gjf"]}`。默认命令不修改 `%mem`、`%nprocshared`、方法、基组或分子内容；在节点页配置合法 `g16.exe/g09.exe` 路径。静态找到程序不等于授权有效或实际计算验证。日志需出现 Normal termination 才判定成功。Gaussian 中断后不自动改写输入猜测续算方法；原目录与 chk 文件保留。
+
+跨机副本数 1–128 会创建一组独立任务，由可用节点逐个领取；副本共用输入，不自动修改随机种子。它不是 MPI/Linda 分布式单作业。AI 会按所选软件及资源筛选节点。所有参与新版队列的节点必须升级到 0.3.0。
+
+依赖安装页可安装或继续所选组件，查看安装状态和失败原因。需要管理员权限、联网和可能的系统重启；不强制重启。Ubuntu/Debian 仓库 GROMACS 可能为 CPU 构建，勾选显卡驱动不等于获得 CUDA 版 GROMACS。驱动通过 Windows Update 选择硬件匹配的 Display 更新，不安装 WSL Linux 显示驱动。首次干净电脑的完整安装链尚待实机验证。
+
+参见 [部署、恢复与 Gaussian 指南](docs/deployment-v0.3.md)。

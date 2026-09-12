@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChemCompute 控制中心 - 化学计算与 GROMACS 分布式节点调度平台</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <!-- 顶部导航栏 -->
+  <header class="navbar">
+    <div class="brand">
+      <span class="brand-icon">⚗️</span>
+      <span class="brand-title">ChemCompute 控制中心</span>
+      <span class="brand-badge">v{{ version }}</span>
+    </div>
+    <div class="nav-controls">
+      <div class="auth-indicator" id="auth-status">
+        <span>○ 检查认证中...</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-admin-login">管理员登录</button>
+    </div>
+  </header>
+
+  <!-- 主体工作区 -->
+  <main class="container">
+    <!-- 指标总览统计 -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon blue">💻</div>
+        <div>
+          <div class="stat-title">已纳管计算节点</div>
+          <div class="stat-value" id="stat-total-nodes">-</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon green">⚡</div>
+        <div>
+          <div class="stat-title">实时在线节点</div>
+          <div class="stat-value" id="stat-online-nodes">-</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon purple">🧪</div>
+        <div>
+          <div class="stat-title">运行中计算作业</div>
+          <div class="stat-value" id="stat-running-jobs">-</div>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon yellow">🎮</div>
+        <div>
+          <div class="stat-title">可用 GPU 算力卡</div>
+          <div class="stat-value" id="stat-total-gpus">-</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 标签页导航 -->
+    <nav class="tabs-header">
+      <button class="tab-btn active" data-tab="nodes">计算节点监控</button>
+      <button class="tab-btn" data-tab="jobs">GROMACS 作业调度</button>
+      <button class="tab-btn" data-tab="invites">邀请码管理</button>
+      <button class="tab-btn" data-tab="audit">安全审计日志</button>
+    </nav>
+
+    <!-- 节点监控面板 -->
+    <section class="tab-pane active" id="tab-nodes">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">计算节点资产列表</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadNodes()">刷新</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>节点名称 / ID</th>
+                <th>状态</th>
+                <th>IP / 主机</th>
+                <th>CPU 占用</th>
+                <th>内存占用</th>
+                <th>GPU 硬件</th>
+                <th>GROMACS 探测</th>
+                <th>最近心跳</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="nodes-table-body">
+              <tr><td colspan="9" class="empty-state">正在加载节点数据...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 作业调度面板 -->
+    <section class="tab-pane" id="tab-jobs">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">GROMACS 作业历史与队列</div>
+          <div>
+            <button class="btn btn-primary btn-sm" onclick="openDispatchModal()">+ 新建 GROMACS 作业</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadJobs()">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>作业 ID</th>
+                <th>目标计算节点</th>
+                <th>执行指令 (安全参数)</th>
+                <th>状态</th>
+                <th>提交时间</th>
+                <th>完成时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-table-body">
+              <tr><td colspan="7" class="empty-state">正在加载作业列表...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 邀请码面板 -->
+    <section class="tab-pane" id="tab-invites">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">入网单次邀请码列表</div>
+          <div>
+            <button class="btn btn-primary btn-sm" onclick="openCreateInviteModal()">+ 生成新邀请码</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadInvites()">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>邀请码前缀 (掩码)</th>
+                <th>使用状态</th>
+                <th>生成时间 (UTC)</th>
+                <th>过期时间 (UTC)</th>
+                <th>绑定消费节点</th>
+                <th>备注</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="invites-table-body">
+              <tr><td colspan="7" class="empty-state">正在加载邀请码列表...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 安全审计日志 -->
+    <section class="tab-pane" id="tab-audit">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">系统操作与安全审计记录</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadAuditLogs()">刷新</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>时间 (UTC)</th>
+                <th>操作主体 (Actor)</th>
+                <th>事件类型</th>
+                <th>详细信息</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <tr><td colspan="4" class="empty-state">正在读取审计日志...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 模态框: 管理员登录 -->
+  <div class="modal-backdrop" id="login-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="panel-title">管理员认证</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeLoginModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="admin-token-input">运行时管理员密钥 (Runtime Admin Secret)</label>
+          <input type="password" id="admin-token-input" class="form-control" placeholder="请输入本机密钥文件中的内容">
+          <small style="color: var(--text-muted); display: block; margin-top: 6px;">
+            提示：密钥位于本机运行时目录中的 <code>data/chemcompute-admin.secret</code> 文件中。
+          </small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeLoginModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitAdminLogin()">确认登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框: 创建邀请码 -->
+  <div class="modal-backdrop" id="invite-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="panel-title">生成新节点入网邀请码</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeCreateInviteModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="invite-hours">有效时长 (小时)</label>
+          <input type="number" id="invite-hours" class="form-control" value="24" min="1" max="720">
+        </div>
+        <div class="form-group">
+          <label for="invite-note">备注信息 (可选，如: 华南超算A区01)</label>
+          <input type="text" id="invite-note" class="form-control" placeholder="节点分配说明">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCreateInviteModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitCreateInvite()">生成并签署</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框: 邀请码生成结果 -->
+  <div class="modal-backdrop" id="invite-result-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="panel-title" style="color: var(--accent-green);">🎉 邀请码生成成功</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeInviteResultModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 12px; font-size: 0.875rem;">
+          <strong style="color: var(--accent-yellow);">安全提醒：</strong>
+          邀请码为<strong>单次有效且具有过期机制</strong>。服务端仅持久化其 SHA-256 散列，明文邀请码<strong>仅在此展示一次</strong>，关闭后无法找回，请立即复制：
+        </p>
+        <div class="form-group">
+          <input type="text" id="show-invite-code" class="form-control" readonly style="font-family: monospace; font-size: 1rem; color: var(--accent-blue);">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeInviteResultModal()">完成</button>
+        <button class="btn btn-primary" onclick="copyInviteCode()">复制邀请码</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框: 分发 GROMACS 作业 -->
+  <div class="modal-backdrop" id="dispatch-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="panel-title">分发 GROMACS 计算任务</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeDispatchModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="job-node-id">目标节点 ID</label>
+          <input type="text" id="job-node-id" class="form-control" placeholder="node-xxxx">
+        </div>
+        <div class="form-group">
+          <label for="job-subcommand">GROMACS 安全子命令 (白名单)</label>
+          <select id="job-subcommand" class="form-control">
+            <option value="version">version (版本探测与硬件加速验证)</option>
+            <option value="check">check (拓扑与结构完整性校验)</option>
+            <option value="grompp">grompp (预处理生成二进制运行拓扑)</option>
+            <option value="mdrun">mdrun (执行动力学仿真计算/基准测试)</option>
+            <option value="editconf">editconf (分子盒构建与晶胞设置)</option>
+            <option value="solvate">solvate (溶剂化构建)</option>
+            <option value="genion">genion (离子填充中和)</option>
+            <option value="energy">energy (能量统计提取)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="job-arguments">执行参数 (以空格隔开，禁止管道与 Shell 元字符)</label>
+          <input type="text" id="job-arguments" class="form-control" placeholder="-v 或 -s topol.tpr -nt 4">
+        </div>
+        <div class="form-group">
+          <label for="job-timeout">超时截断上限 (秒)</label>
+          <input type="number" id="job-timeout" class="form-control" value="300" min="5" max="7200">
+        </div>
+        <div class="form-group">
+          <label for="job-description">任务简述</label>
+          <input type="text" id="job-description" class="form-control" placeholder="例如: 体系能量最小化预检验">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeDispatchModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitDispatchJob()">派发作业</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模态框: 查看作业日志 -->
+  <div class="modal-backdrop" id="log-modal">
+    <div class="modal wide">
+      <div class="modal-header">
+        <div>
+          <h3 class="panel-title" id="log-modal-title">作业执行日志</h3>
+          <small id="log-modal-status" style="color: var(--text-secondary);"></small>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="closeJobLogModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="terminal-box" id="log-terminal-output">(暂无日志)</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeJobLogModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

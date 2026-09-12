@@ -1,5 +1,10 @@
-"""
-Security, token generation, and invite code utilities for ChemCompute.
+"""ChemCompute 安全与凭证管理模块
+
+核心设计原则：
+1. 单次有效、过期机制的邀请码 (SHA-256 散列存储，明文仅在创建时展示一次)
+2. 节点独立随机令牌 (服务端仅存储哈希，明文由节点本地配置持有)
+3. 运行时管理员密钥 (杜绝硬编码长效密钥，启动时从环境/命令行/运行时密钥文件加载或自动生成)
+4. 时间恒定比对 (防时序侧信道攻击)
 """
 
 from __future__ import annotations
@@ -9,37 +14,15 @@ import hmac
 import logging
 import os
 import secrets
-import string
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-def generate_invite_code(prefix: str = "CC") -> str:
-    """Generate a clean 6-character uppercase alphanumeric invite code like CC-7F4A9K."""
-    alphabet = string.ascii_uppercase.replace("O", "").replace("I", "") + "23456789"
-    suffix = "".join(secrets.choice(alphabet) for _ in range(6))
-    return f"{prefix}-{suffix}"
-
-
-def generate_token(length: int = 32) -> str:
-    """Generate a high-entropy secret token for nodes."""
-    return secrets.token_urlsafe(length)
-
-
-def hash_token(token: str) -> str:
-    """SHA-256 hash a token for safe persistence."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def validate_invite_code_format(code: str) -> bool:
-    """Validate if code matches standard format CC-XXXXXX."""
-    parts = code.strip().upper().split("-")
-    if len(parts) != 2:
-        return False
-    if parts[0] != "CC" or len(parts[1]) != 6:
-        return False
-    return True
+def generate_invite_code(prefix: str = "cc-inv-") -> str:
+    """生成具有高熵的单次使用邀请码"""
+    token = secrets.token_urlsafe(24)
+    return f"{prefix}{token}"
 
 
 def generate_node_token(prefix: str = "cc-node-") -> str:
@@ -79,6 +62,8 @@ def constant_time_compare(val1: str, val2: str) -> bool:
 def secure_path(path: Path | str, is_dir: bool = False) -> bool:
     """
     配置目录或敏感凭证文件的访问控制列表 (ACL)。
+    - Windows: 使用 icacls 禁用继承并仅向当前用户、SYSTEM 及 Administrators 授权
+    - Linux / macOS: 使用 chmod 设置 0700 (目录) 或 0600 (文件)
     """
     p = Path(path).resolve()
     if not p.exists():
@@ -90,6 +75,7 @@ def secure_path(path: Path | str, is_dir: bool = False) -> bool:
             username = os.environ.get("USERNAME")
             if not username:
                 return False
+            # 管理员 (S-1-5-32-544), SYSTEM (S-1-5-18), 当前用户
             perm = "(OI)(CI)F" if is_dir else "F"
             cmd = [
                 "icacls.exe",
@@ -134,21 +120,33 @@ def load_or_create_runtime_admin_secret(
 ) -> tuple[str, bool]:
     """
     加载或创建控制端运行时管理员密钥。
+    优先级：
+    1. 显式指定的 secret (CLI 或配置)
+    2. 环境变量 CHEMCOMPUTE_ADMIN_SECRET
+    3. 运行时密钥文件 (如存在则读取)
+    4. 自动生成全新安全密钥并持久化到受保护的文件中
+
+    返回: (admin_secret, is_newly_generated)
     """
+    # 1. 显式指定
     if explicit_secret and explicit_secret.strip():
         return explicit_secret.strip(), False
 
+    # 2. 环境变量
     env_secret = os.environ.get("CHEMCOMPUTE_ADMIN_SECRET")
     if env_secret and env_secret.strip():
         return env_secret.strip(), False
 
+    # 确定密钥文件存储路径
     if secret_file_path:
         target_path = Path(secret_file_path)
     else:
+        # 默认放在工作目录或用户目录的运行时数据文件夹
         runtime_dir = Path("data")
         ensure_secure_directory(runtime_dir)
         target_path = runtime_dir / "chemcompute-admin.secret"
 
+    # 3. 如果文件存在且非空，直接读取
     if target_path.exists():
         try:
             content = target_path.read_text(encoding="utf-8").strip()
@@ -158,6 +156,7 @@ def load_or_create_runtime_admin_secret(
         except Exception as e:
             logger.warning("无法读取现存运行时管理员密钥文件 %s: %s", target_path, e)
 
+    # 4. 生成新密钥并安全写入
     new_secret = generate_admin_secret()
     try:
         ensure_secure_directory(target_path.parent)

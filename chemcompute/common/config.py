@@ -28,6 +28,7 @@ class NodeConfig(BaseModel):
     invite_code: str | None = None
     heartbeat_interval_seconds: int = 15
     gromacs_custom_path: str | None = None
+    gaussian_custom_path: str | None = None
     workspace_dir: str = "data/workspace"
     max_job_timeout_seconds: int = 3600
 
@@ -47,8 +48,11 @@ def load_yaml_config(path: str | Path, model_cls: type[BaseModel]) -> BaseModel:
 
 
 def save_yaml_config(config: BaseModel, path: str | Path) -> None:
-    """将配置对象安全写入 YAML 文件并施加访问控制"""
+    """将配置对象安全写入 YAML 文件并施加严格访问控制 (ACL)"""
+    from chemcompute.common.security import ensure_secure_directory, secure_path
+
     p = Path(path).resolve()
-    p.parent.mkdir(parents=True, exist_ok=True)
+    ensure_secure_directory(p.parent)
     with open(p, "w", encoding="utf-8") as f:
         yaml.safe_dump(config.model_dump(), f, allow_unicode=True, sort_keys=False)
+    secure_path(p, is_dir=False)

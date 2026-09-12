@@ -1,182 +1,83 @@
-"""
-FastAPI application entrypoint for ChemCompute Controller.
-"""
+"""ChemCompute FastAPI 控制端主应用"""
 
-import asyncio
+from __future__ import annotations
+
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
-from chemcompute.controller.database import Database
-from chemcompute.controller.scheduler import Scheduler
-from chemcompute.controller.routes.nodes import router as nodes_router
-from chemcompute.controller.routes.enroll import router as enroll_router
+from chemcompute import __version__
+from chemcompute.common.config import ControllerConfig
+from chemcompute.common.security import load_or_create_runtime_admin_secret
+from chemcompute.controller.db import Database
+from chemcompute.controller.routes.auth import router as auth_router
 from chemcompute.controller.routes.jobs import router as jobs_router
-from chemcompute.controller.routes.updates import router as updates_router
-from chemcompute.controller.routes.templates import router as templates_router
-from chemcompute.controller.websocket import ws_manager
-from chemcompute.common.models import NodeState, JobStatus
-from fastapi import WebSocket, WebSocketDisconnect
+from chemcompute.controller.routes.nodes import router as nodes_router
+from chemcompute.controller.routes.tasks import router as tasks_router
+from chemcompute.controller.routes.web import router as web_router
+
+logger = logging.getLogger("chemcompute.controller")
 
 
-def _resolve_data_and_db() -> tuple[Path, Path, Path]:
-    cwd = Path.cwd()
-    ctrl_yaml = cwd / "config" / "controller.yaml"
-    if ctrl_yaml.exists():
-        try:
-            import yaml
-            cdata = yaml.safe_load(ctrl_yaml.read_text(encoding="utf-8")) or {}
-            if cdata.get("db_path"):
-                p = Path(cdata["db_path"])
-                db_p = p if p.is_absolute() else (cwd / p)
-                d_dir = db_p.parent
-                s_root = d_dir / "storage"
-                d_dir.mkdir(parents=True, exist_ok=True)
-                s_root.mkdir(parents=True, exist_ok=True)
-                return d_dir, db_p, s_root
-        except Exception:
-            pass
-    if (cwd / "data").exists():
-        d_dir = cwd / "data"
-        db_p = d_dir / "chemcompute.db"
-        s_root = d_dir / "storage"
-        s_root.mkdir(parents=True, exist_ok=True)
-        return d_dir, db_p, s_root
-    d_dir = cwd / "controller_data"
-    d_dir.mkdir(parents=True, exist_ok=True)
-    db_p = d_dir / "chemcompute.db"
-    s_root = d_dir / "storage"
-    s_root.mkdir(parents=True, exist_ok=True)
-    return d_dir, db_p, s_root
+def create_app(config: ControllerConfig | None = None) -> FastAPI:
+    """构建并配置 FastAPI 控制端实例"""
+    if config is None:
+        config = ControllerConfig()
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # 1. 初始化持久化 SQLite
+        app.state.db = Database(config.db_path)
+        app.state.node_offline_threshold_seconds = config.node_offline_threshold_seconds
+        app.state.heartbeat_interval_seconds = config.heartbeat_interval_seconds
 
-DATA_DIR, DB_PATH, STORAGE_ROOT = _resolve_data_and_db()
+        # 2. 安全装载或生成运行时管理员密钥
+        admin_secret, is_new = load_or_create_runtime_admin_secret(
+            explicit_secret=config.admin_secret,
+            secret_file_path=config.secret_file,
+        )
+        app.state.admin_secret = admin_secret
 
-db = Database(DB_PATH)
-db.seed_official_releases()
-scheduler = Scheduler(db)
+        banner = [
+            "=" * 60,
+            f" ChemCompute Controller v{__version__} 启动成功",
+            f" 监听地址: http://{config.host}:{config.port}",
+            f" SQLite 数据库: {config.db_path}",
+        ]
+        if is_new:
+            banner.extend([
+                " [安全提示] 已为您生成全新运行时管理员密钥:",
+                f" 密钥已保存至本地: {config.secret_file}",
+            ])
+        else:
+            banner.append(" [安全提示] 管理员密钥已自配置/环境变量或已有密钥文件安全加载")
+        banner.append("=" * 60)
+        logger.info("\n".join(banner))
 
+        yield
 
-async def background_scheduler_loop():
-    """Periodically execute scheduler cycles to match pending jobs."""
-    while True:
-        try:
-            scheduler.schedule_cycle()
-        except Exception:
-            pass
-        await asyncio.sleep(2.0)
+        logger.info("ChemCompute 控制端正在关闭...")
 
+    app = FastAPI(
+        title="ChemCompute 控制中心",
+        description="现代化化学计算与GROMACS分布式节点调度平台",
+        version=__version__,
+        lifespan=lifespan,
+    )
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Setup background task
-    if not hasattr(app.state, "db") or app.state.db is None:
-        app.state.db = db
-    if not hasattr(app.state, "storage_root") or app.state.storage_root is None:
-        app.state.storage_root = STORAGE_ROOT
-    task = asyncio.create_task(background_scheduler_loop())
-    yield
-    task.cancel()
-
-
-app = FastAPI(
-    title="ChemCompute Controller",
-    description="Distributed Chemical Computation Node Grid & Scheduler",
-    version="0.3.0",
-    lifespan=lifespan
-)
-
-app.state.db = db
-app.state.storage_root = STORAGE_ROOT
-
-
-def create_app(cfg=None) -> FastAPI:
-    return app
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(nodes_router)
-app.include_router(enroll_router)
-app.include_router(jobs_router)
-app.include_router(updates_router)
-app.include_router(templates_router)
-
-
-@app.websocket("/ws/nodes/{node_id}")
-async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
-    await ws_manager.connect_node(node_id, websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            # Can process incoming agent ping or status ack
-    except WebSocketDisconnect:
-        await ws_manager.disconnect_node(node_id)
-    except Exception:
-        await ws_manager.disconnect_node(node_id)
-
-
-@app.websocket("/ws/console")
-async def websocket_console_endpoint(websocket: WebSocket):
-    await ws_manager.connect_console(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        await ws_manager.disconnect_console(websocket)
-    except Exception:
-        await ws_manager.disconnect_console(websocket)
-
-
-# Mount static files
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
+    # 挂载静态资源
+    static_dir = Path(__file__).parent / "static"
+    static_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+    # 注册路由模块
+    app.include_router(web_router)
+    app.include_router(auth_router)
+    app.include_router(nodes_router)
+    app.include_router(jobs_router)
+    app.include_router(tasks_router)
 
-@app.get("/")
-def serve_index():
-    index_file = static_dir / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
-    return {"message": "ChemCompute Controller is running. Web console static files not found."}
-
-
-@app.get("/api/cluster/stats")
-def get_cluster_stats():
-    """Get high-level summary metrics of nodes and jobs."""
-    nodes = db.list_nodes()
-    jobs = db.list_jobs()
-
-    online_nodes = [n for n in nodes if n.status != NodeState.OFFLINE]
-    running_jobs = [j for j in jobs if j.status in [JobStatus.RUNNING, JobStatus.ASSIGNED]]
-    completed_jobs = [j for j in jobs if j.status == JobStatus.COMPLETED]
-
-    return {
-        "total_nodes": len(nodes),
-        "online_nodes": len(online_nodes),
-        "total_jobs": len(jobs),
-        "running_jobs": len(running_jobs),
-        "completed_jobs": len(completed_jobs)
-    }
-
-
-@app.get("/api/v1/nodes")
-def list_nodes_v1():
-    nodes = db.list_nodes()
-    res = []
-    for n in nodes:
-        d = n.model_dump()
-        if d.get("status") in ("idle", "busy", "online"):
-            d["status"] = "online"
-        res.append(d)
-    return res
-
+    return app

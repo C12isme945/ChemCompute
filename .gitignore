@@ -1,17 +1,97 @@
-# Python-generated files
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Installer outputs
+installer/Output/
+Output/
+*.exe
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
 
 # Virtual environments
-.venv
+.venv/
+venv/
+ENV/
+env/
 
-# Runtime database & local runtime storage
-controller_data/
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ChemCompute runtime data and logs
 *.db
+*.db-journal
+*.sqlite
 *.sqlite3
-.pytest_cache/
+chemcompute.db
+data/
+logs/
+*.log
+*.pid
+*.secret
+chemcompute-admin.secret
+
+# Local temporary and test output
+temp/
+tmp/
+scratch/
+run/
+workdir/
+
+# Secrets and generated build specification
+config/
+.env
+.env.*
 *.spec
+role.json
+.ruff_cache/
+
+*.dpapi
+*.pem
+cloudflare/
