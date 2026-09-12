@@ -41,7 +41,7 @@ def test_inspect_installation_valid_g16_and_companions(tmp_path: Path):
     assert info["tools"]["gview.exe"] is True
     assert info["tools"]["g09w.exe"] is False
     assert info["tools"]["cubegen.exe"] is False
-    assert info["probe"]["found"] is True
+    assert info["probe"]["found"] is (sys.platform == "win32")
 
 
 def test_inspect_installation_valid_g09(tmp_path: Path):
