@@ -15,6 +15,7 @@ from chemcompute.secrets_store import read_credentials, save_credentials
 from chemcompute.tasks import TaskSpec
 
 PRESETS = {
+    'Gaussian 输入文件': [{'subcommand': 'run', 'arguments': ['input.gjf']}],
     '版本与环境检查': [{'subcommand': 'version', 'arguments': []}],
     '预处理 + 分子动力学': [
         {'subcommand': 'grompp', 'arguments': ['-f', 'run.mdp', '-c', 'conf.gro', '-p', 'topol.top', '-o', 'run.tpr']},
@@ -37,10 +38,12 @@ class Workspace:
         self.submit_tab = self.tab(notebook, '提交计算包')
         self.invite_tab = self.tab(notebook, '节点与邀请码')
         self.settings_tab = self.tab(notebook, '连接与 AI 设置')
+        self.deploy_tab = self.tab(notebook, '依赖安装')
         self.build_tasks()
         self.build_submit()
         self.build_invites()
         self.build_settings()
+        self.build_deployment()
 
     def tab(self, notebook, name):
         frame = ttk.Frame(notebook, padding=12)
@@ -82,14 +85,14 @@ class Workspace:
         for name, text in [('name', '任务'), ('status', '状态'), ('progress', '步骤进度'), ('node', '执行节点')]:
             self.task_tree.heading(name, text=text)
         self.task_tree.pack(fill='both', expand=True, pady=10)
-        ttk.Label(self.task_tab, text='运行中任务失联时保留原状态，不自动重复派发。取消请求由节点确认；WSL 当前步骤退出后生效。').pack(anchor='w')
+        ttk.Label(self.task_tab, text='失联后自动重连并补传结果；GROMACS 可在原节点从检查点恢复。不会把失联任务重复派给其他节点。').pack(anchor='w')
 
     def refresh_tasks(self):
         def display(values):
             self.tasks = {v['id']: v for v in values}
             selected = self.task_tree.selection()
             self.task_tree.delete(*self.task_tree.get_children())
-            states = {'queued': '排队', 'running': '运行中', 'completed': '完成', 'failed': '失败', 'cancelled': '已取消'}
+            states = {'queued': '排队', 'running': '运行中', 'completed': '完成', 'failed': '失败', 'cancelled': '已取消', 'recovering': '失联恢复等待'}
             for value in values:
                 self.task_tree.insert('', 'end', iid=value['id'], values=(value['spec']['name'], states.get(value['status'], value['status']), str(value['progress']) + '%', value['node'] or '等待匹配'))
             if selected and selected[0] in self.tasks:
@@ -129,10 +132,13 @@ class Workspace:
         row = ttk.Frame(self.submit_tab)
         row.pack(fill='x')
         self.name = self.field(row, '任务名称', '新的计算任务', 24)
+        self.software = ttk.Combobox(row, values=['gromacs', 'gaussian'], width=10, state='readonly')
+        self.software.set('gromacs')
+        self.software.pack(side='left', padx=5)
         self.preset = ttk.Combobox(row, values=list(PRESETS), state='readonly', width=24)
         self.preset.set('版本与环境检查')
         self.preset.pack(side='left', pady=10)
-        self.preset.bind('<<ComboboxSelected>>', lambda _: self.set_steps(PRESETS[self.preset.get()]))
+        self.preset.bind('<<ComboboxSelected>>', lambda _: self.choose_preset())
         ttk.Button(row, text='选择并上传 ZIP', command=self.upload).pack(side='left', padx=8)
         self.package_label = tk.StringVar(value='尚未上传计算包（版本检查可不上传）')
         ttk.Label(self.submit_tab, textvariable=self.package_label).pack(anchor='w')
@@ -142,6 +148,7 @@ class Workspace:
         self.ram = self.field(row, '最低可用内存 MB', '256', 12)
         self.timeout = self.field(row, '超时 / 秒', '3600', 10)
         self.priority = self.field(row, '优先级 0–10', '0', 10)
+        self.replicas = self.field(row, '跨机副本数', '1', 8)
         self.gpu = tk.BooleanVar()
         ttk.Checkbutton(row, text='要求 CUDA GPU', variable=self.gpu).pack(side='left', padx=8)
         row = ttk.Frame(self.submit_tab)
@@ -153,10 +160,10 @@ class Workspace:
         ttk.Button(row, text='刷新节点', command=self.refresh_nodes).pack(side='left')
         self.description = tk.StringVar()
         ttk.Entry(self.submit_tab, textvariable=self.description).pack(fill='x', pady=5)
-        ttk.Label(self.submit_tab, text='任务说明（可留空）；下方编辑步骤 JSON，仅允许受限 GROMACS 命令，路径相对计算包根目录。').pack(anchor='w')
+        ttk.Label(self.submit_tab, text='任务说明（可留空）；下方编辑步骤 JSON，仅允许受限 GROMACS / Gaussian 命令，路径相对计算包根目录。').pack(anchor='w')
         row = ttk.Frame(self.submit_tab)
         row.pack(fill='x')
-        self.step_command = ttk.Combobox(row, values=['version', 'check', 'grompp', 'mdrun', 'editconf', 'solvate', 'genion', 'energy'], width=12, state='readonly')
+        self.step_command = ttk.Combobox(row, values=['version', 'check', 'grompp', 'mdrun', 'editconf', 'solvate', 'genion', 'energy', 'run'], width=12, state='readonly')
         self.step_command.set('mdrun')
         self.step_command.pack(side='left')
         self.step_args = self.field(row, '步骤参数（文件名有空格时加双引号）', '-s run.tpr -deffnm run -nt 1', 52)
@@ -187,7 +194,7 @@ class Workspace:
 
     def specification(self):
         selected = self.node.get()
-        return TaskSpec(name=self.name.get(), description=self.description.get(),
+        return TaskSpec(software=self.software.get(), name=self.name.get(), description=self.description.get(),
                         node_id='' if selected == '自动匹配' else selected.split(' | ')[0],
                         package_id=self.package['id'] if self.package else None,
                         steps=json.loads(self.steps.get('1.0', 'end')),
@@ -205,6 +212,7 @@ class Workspace:
             self.package = value
             self.package_label.set(f"{Path(path).name} · {len(value['files'])} 个文件 · {value['size_bytes'] / 1024:.1f} KB")
             manifest = value.get('manifest') or {}
+            self.software.set(manifest.get('software', 'gromacs'))
             if 'steps' in manifest:
                 self.set_steps(manifest['steps'])
             if 'name' in manifest:
@@ -221,6 +229,9 @@ class Workspace:
     def ai_allocate(self):
         try:
             spec = self.specification()
+            count = int(self.replicas.get())
+            if not 1 <= count <= 128:
+                raise ValueError('副本数必须为 1–128。')
         except Exception as exc:
             self.console.notice.set(str(exc))
             return
@@ -237,12 +248,20 @@ class Workspace:
     def submit(self):
         try:
             spec = self.specification()
+            count = int(self.replicas.get())
+            if not 1 <= count <= 128:
+                raise ValueError('副本数必须为 1–128。')
         except Exception as exc:
             self.console.notice.set(str(exc))
             return
         summary = f'{spec.name}\n节点：{spec.node_id or "自动按资源匹配"}\n步骤：' + ' → '.join(s.subcommand for s in spec.steps) + f'\n超时：{spec.timeout_seconds} 秒'
         if messagebox.askyesno('确认提交计算', summary, parent=self.root):
-            self.run(lambda: api.call('POST', '/api/v2/tasks', json=spec.model_dump()), lambda value: self.show_text('任务已提交', value['id'] + '\n可在任务中心刷新查看进度。'))
+            count = int(self.replicas.get())
+            if count > 1:
+                spec.node_id = ''
+                self.run(lambda: api.call('POST', '/api/v2/batches', json={'task': spec.model_dump(), 'count': count}), lambda value: self.show_text('跨机任务组已提交', value['batch_id']))
+            else:
+                self.run(lambda: api.call('POST', '/api/v2/tasks', json=spec.model_dump()), lambda value: self.show_text('任务已提交', value['id'] + '\n可在任务中心刷新查看进度。'))
 
     def build_invites(self):
         row = ttk.Frame(self.invite_tab)
@@ -258,9 +277,21 @@ class Workspace:
         ttk.Button(self.invite_tab, text='撤销选中邀请码', command=self.revoke_invite).pack(anchor='w')
         row = ttk.Frame(self.invite_tab)
         row.pack(fill='x')
-        self.join_url = self.field(row, '本节点主控 URL', 'http://127.0.0.1:8000', 32)
+        self.join_url = self.field(row, '本节点主控 URL', 'https://chemcompute.666945726.xyz', 32)
         self.join_name = self.field(row, '节点名称', '', 18)
         self.join_code = self.field(row, '新邀请码', '', 35, secret=True)
+        row = ttk.Frame(self.invite_tab)
+        row.pack(fill='x')
+        self.gaussian_path = self.field(row, '本机 Gaussian g16.exe / g09.exe 路径', '', 55)
+        self.local_limit = self.field(row, '节点任务时限 / 秒', '3600', 12)
+        try:
+            cfg = load_yaml_config('config/node.yaml', NodeConfig)
+            self.gaussian_path.set(cfg.gaussian_custom_path or '')
+            self.local_limit.set(str(cfg.max_job_timeout_seconds))
+            self.join_url.set(cfg.controller_url)
+            self.join_name.set(cfg.node_name)
+        except Exception:
+            pass
         ttk.Button(self.invite_tab, text='保存本节点入网配置（后台停止后操作）', command=self.enroll).pack(anchor='w')
 
     def create_invite(self):
@@ -291,6 +322,8 @@ class Workspace:
             self.console.notice.set('请先停止本机后台，再修改节点入网配置。')
             return
         config = load_yaml_config('config/node.yaml', NodeConfig)
+        config.gaussian_custom_path = self.gaussian_path.get().strip() or None
+        config.max_job_timeout_seconds = max(5, min(604800, int(self.local_limit.get())))
         config.controller_url = self.join_url.get().strip()
         config.node_name = self.join_name.get().strip()
         if self.join_code.get().strip():
@@ -313,7 +346,7 @@ class Workspace:
         row.pack(fill='x', pady=12)
         ttk.Button(row, text='加密保存设置', command=self.save_settings).pack(side='left')
         ttk.Button(row, text='测试 DeepSeek 连接', command=lambda: self.run(deepseek.test_connection, lambda models: self.show_text('DeepSeek 可用模型', '\n'.join(models)))).pack(side='left', padx=8)
-        ttk.Label(self.settings_tab, text='密钥通过 Windows DPAPI 加密，绑定当前 Windows 账号。安装包不包含密钥。\n其他电脑无需 Python，但需单独配置连接；GROMACS/WSL 和许可软件仍需自行安装。\n资源要求是节点准入门槛，不会自动改写科学参数；计算线程数请在步骤参数 -nt 中设置。', wraplength=950).pack(anchor='w', pady=10)
+        ttk.Label(self.settings_tab, text='密钥通过 Windows DPAPI 加密，绑定当前 Windows 账号。安装包不包含密钥。\n其他电脑无需 Python。WSL/GROMACS/驱动可在依赖安装页配置；Gaussian 需已有授权安装。\n资源要求是节点准入门槛，不会自动改写科学参数；计算线程数请在步骤参数 -nt 中设置。', wraplength=950).pack(anchor='w', pady=10)
         try:
             settings = read_credentials()
             self.remote.set(settings.get('controller_url', ''))
@@ -339,3 +372,40 @@ class Workspace:
             self.console.notice.set('设置已加密保存。')
         except Exception as exc:
             self.console.notice.set(str(exc))
+
+
+    def choose_preset(self):
+        name = self.preset.get()
+        self.software.set('gaussian' if name.startswith('Gaussian') else 'gromacs')
+        self.set_steps(PRESETS[name])
+
+    def build_deployment(self):
+        self.install_choices = {}
+        for flag, label in [('WSL', 'WSL / Ubuntu（缺失时安装）'), ('Gromacs', 'GROMACS（仓库版本，可能仅支持 CPU）'), ('Drivers', 'Windows Update 匹配的显示驱动')]:
+            variable = tk.BooleanVar(value=True)
+            self.install_choices[flag] = variable
+            ttk.Checkbutton(self.deploy_tab, text=label, variable=variable).pack(anchor='w', pady=6)
+        ttk.Label(self.deploy_tab, text='可取消任一选项。系统会请求管理员权限；需要重启时保存进度，不强制重启。\nGaussian 使用已有授权安装，不随包分发。服务器入口：https://chemcompute.666945726.xyz', wraplength=950).pack(anchor='w', pady=12)
+        ttk.Button(self.deploy_tab, text='安装 / 继续安装所选依赖', command=self.install_dependencies).pack(anchor='w')
+        ttk.Button(self.deploy_tab, text='刷新安装状态', command=self.deployment_status).pack(anchor='w', pady=8)
+        self.dependency_text = tk.Text(self.deploy_tab, height=8, wrap='word')
+        self.dependency_text.pack(fill='both', expand=True)
+        self.deployment_status()
+
+    def deployment_status(self):
+        import os
+        path = Path(os.environ.get('LOCALAPPDATA', '.')) / 'ChemComputeData/dependency-status.json'
+        text = path.read_text(encoding='utf-8-sig') if path.exists() else '尚未运行依赖安装。'
+        self.dependency_text.delete('1.0', 'end')
+        self.dependency_text.insert('1.0', text)
+
+    def install_dependencies(self):
+        import subprocess
+        import sys
+        folder = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1]
+        script = folder / 'scripts/dependencies.ps1'
+        flags = ['-' + name for name, variable in self.install_choices.items() if variable.get()]
+        if not flags:
+            return
+        subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), *flags], creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        self.console.notice.set('依赖安装已启动；请处理 Windows 权限提示，然后刷新安装状态。')

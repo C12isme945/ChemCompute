@@ -23,14 +23,14 @@ def test_connection():
 def request_payload(spec: TaskSpec, nodes: list[dict], files: list[str]):
     candidates = []
     for node in nodes:
-        if eligible(node, spec.resources):
+        if eligible(node, spec.resources, spec.software):
             hw = node['hardware_info']
             candidates.append({'node_id': node['node_id'], 'cpu_cores': hw['cpu_count_logical'],
                                'cpu_percent': hw.get('cpu_percent'), 'available_ram_mb': hw['ram_available_mb'],
                                'gpu_names': [g['name'] for g in hw.get('gpus', [])]})
     if not candidates:
-        raise ValueError('没有满足 CPU、内存、GPU 与 GROMACS 要求的在线节点。')
-    return {'task': {'name': spec.name, 'description': spec.description,
+        raise ValueError('没有满足 CPU、内存、GPU 与所选软件要求的在线节点。')
+    return {'task': {'software': spec.software, 'name': spec.name, 'description': spec.description,
                      'resources': spec.resources.model_dump(),
                      'steps': [s.model_dump() for s in spec.steps]},
             'package_filenames': files[:200], 'candidates': candidates}

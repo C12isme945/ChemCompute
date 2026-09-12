@@ -100,7 +100,7 @@ def cancel(identity: str, request: Request):
     data = store(request)
     get_task(request, identity)
     with data.connect() as db:
-        db.execute("UPDATE tasks_v2 SET cancelled=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running')", (identity,))
+        db.execute("UPDATE tasks_v2 SET cancelled=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END WHERE id=? AND status IN ('queued','running','recovering')", (identity,))
     return data.get(identity)
 
 
@@ -124,6 +124,8 @@ def results(identity: str, request: Request):
 @router.post('/worker/{node_id}/claim')
 def claim(node_id: str, request: Request, authorization: Annotated[str | None, Header()] = None):
     node_auth(request, node_id, authorization)
+    if request.headers.get('X-ChemCompute-Protocol') != '3':
+        raise HTTPException(426, 'Upgrade this compute node to ChemCompute 0.3 or newer')
     return store(request).claim(get_db(request).get_node(node_id))
 
 
@@ -133,6 +135,9 @@ def worker_status(node_id: str, identity: str, request: Request, authorization: 
     task = get_task(request, identity)
     if task['node'] != node_id:
         raise HTTPException(403, 'Task assigned to another node')
+    lease = request.headers.get('X-Lease-Token', '')
+    if not lease or lease != task.get('lease_token'):
+        raise HTTPException(409, 'Stale or missing task lease')
     return {'cancelled': bool(task['cancelled']), 'status': task['status']}
 
 
@@ -179,3 +184,32 @@ def progress(node_id: str, identity: str, payload: Progress, request: Request, a
         db.execute('UPDATE tasks_v2 SET status=?,progress=?,log=?,updated=? WHERE id=?',
                    (payload.status, payload.progress, payload.log, time.time(), identity))
     return {'ok': True}
+
+
+class Batch(BaseModel):
+    task: TaskSpec
+    count: int = Field(1, ge=1, le=128)
+
+
+@router.post('/batches', dependencies=[Depends(verify_admin)])
+def batch(payload: Batch, request: Request):
+    group = 'batch-' + uuid.uuid4().hex
+    # Validate package/node before starting the batch; each copy is an independent calculation.
+    if payload.task.node_id:
+        raise HTTPException(400, 'Batch collaboration requires automatic node selection')
+    tasks = []
+    for index in range(payload.count):
+        spec = payload.task.model_copy(update={'name': payload.task.name[:140] + f' [{index+1}/{payload.count}]', 'batch_id': group})
+        tasks.append(create_task(spec, request))
+    return {'batch_id': group, 'tasks': tasks}
+
+
+@router.post('/worker/{node_id}/tasks/{identity}/renew')
+def renew_task(node_id: str, identity: str, request: Request, authorization: Annotated[str | None, Header()] = None):
+    node_auth(request, node_id, authorization)
+    data = store(request)
+    token = request.headers.get('X-Lease-Token', '')
+    if not data.recovery.resume(identity, node_id, token):
+        raise HTTPException(409, 'Lease is no longer owned by this worker')
+    task = data.get(identity)
+    return {'cancelled': bool(task['cancelled']), 'status': task['status']}

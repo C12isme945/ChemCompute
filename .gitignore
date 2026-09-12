@@ -93,3 +93,5 @@ role.json
 .ruff_cache/
 
 *.dpapi
+*.pem
+cloudflare/

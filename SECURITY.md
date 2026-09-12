@@ -1,6 +1,6 @@
 # Security model
 
-Use only on loopback or a controlled encrypted Tailscale network. The app has no built-in TLS. Administrator access can schedule compute processes and must be limited to trusted operators. No embedded admin password or network auth key exists in the installer.
+Use loopback, a controlled encrypted Tailscale network, or a configured HTTPS Cloudflare Tunnel/reverse proxy. The app has no built-in TLS and its origin must remain loopback-only for public tunnel deployments. Administrator access can schedule compute processes and must be limited to trusted operators. No embedded admin password or network auth key exists in the installer.
 
 Invites expire, are single-use, and are stored as SHA-256 hashes. Per-node random bearer tokens are stored hashed by the controller. The node retains its token locally in YAML. The runtime admin token remains in a local secret file and is not logged. Local account compromise exposes these credentials. Runtime directories are restricted to the current Windows user and administrators. Revoking/deleting a node invalidates its token; re-enroll using a fresh invite.
 

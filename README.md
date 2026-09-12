@@ -1,8 +1,8 @@
 # ChemCompute
 
-将 Windows 电脑接入私人化学计算网络的开源 MVP。包含 Inno Setup 安装器、FastAPI/SQLite 控制端、中文 Web Console、后台节点代理和 GROMACS 适配器。MIT 许可。
+将 Windows 电脑接入私人化学计算网络的开源 MVP。包含 Inno Setup 安装器、FastAPI/SQLite 控制端、中文 Web Console、后台节点代理、GROMACS 与 Gaussian 适配器。MIT 许可。
 
-**这是 0.2.0 预发布版。Windows 安装包已内置 Python 与 Tk，目标电脑不需要另装 Python。** 安装包不包含 GROMACS、COMSOL、ORCA、CUDA 或软件许可证。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。跨机吞吐量和无人登录开机运行尚未验证。
+**这是 0.3.0 预发布版。Windows 安装包已内置 Python 与 Tk，目标电脑不需要另装 Python。** 安装页面默认勾选 WSL、GROMACS 和匹配的显示驱动安装，可分别取消。程序通过在线官方/发行版源安装依赖，安装器不包含商业软件或许可证。Gaussian 使用节点已有授权安装。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。两个逻辑节点的并发分配已测试；不同物理电脑的吞吐量和无人登录开机运行尚未验证。
 
 ## 安装与第一次运行
 
@@ -13,6 +13,8 @@
 5. 在控制台查看节点 CPU、RAM、GPU 与软件探测，生成/撤销邀请码，创建 GROMACS 作业并查看状态和日志。
 
 默认安装至当前用户目录，不要求管理员权限。可选“登录时启动”使用当前用户启动项；**不是原生 Windows Service，不保证注销后或登录前运行**。安装包不自动修改防火墙、SSH 或 Tailscale 登录。
+
+默认本机角色为主控 + 计算节点。本部署的远程入口为 `https://chemcompute.666945726.xyz`，由本机 Cloudflare Tunnel 连接，不把域名当作监听 IP。远程电脑选择 Compute node，输入该 URL 与单次邀请码。
 
 配置、数据库、日志保存在 `%LOCALAPPDATA%\ChemComputeData`，升级保留已有配置。卸载删除程序与启动项，保留数据以便恢复。更换角色或主控地址需编辑 `config/*.yaml` 后重启程序。停止/重启后台可在桌面操控台操作；关闭桌面窗口后后台继续运行。升级/卸载前先停止后台并确认没有计算任务。旧版 0.1.0 未记录进程身份，首次升级前请在任务管理器退出旧程序。
 
@@ -56,7 +58,7 @@ python -m venv .venv
 
 计算包上限 100 MiB、展开上限 512 MiB、最多 2000 文件，压缩比不超过 200；拒绝目录穿越、链接、加密 ZIP、Windows 危险名称、重复名称和 CRC 错误。计算结果采用不压缩 ZIP，所含文件总量因此也需小于约 100 MiB。超限任务会失败，文件保留在节点本机。现阶段不适合大型生产轨迹。
 
-没有 MPI 跨机协作、断点恢复、失联自动重派或原生系统服务。进度按完成步骤更新，不是 MD 步数百分比。原生子进程支持取消；WSL 取消在当前步骤退出后确认，步骤时限由 WSL 的 GNU `timeout` 控制。节点失联时保留运行状态避免重复计算；需检查节点本机后人工处理。CPU/RAM/GPU 是分配准入条件，不是操作系统资源隔离，线程数等科学参数仍需自行设置。工作目录不是 OS 沙箱，仅处理可信输入。
+支持跨节点独立任务/副本分配，以及失联后的原节点恢复；不支持把一个 MPI/Linda 作业跨互联网拆到多台电脑或原生系统服务。进度按完成步骤更新，不是 MD 步数百分比。原生子进程支持取消；WSL 取消在当前步骤退出后确认，步骤时限由 WSL 的 GNU `timeout` 控制。运行租约到期后进入 recovering。节点重连会恢复租约、重放本地持久记录并补传结果；代理意外重启时先确认旧计算进程结束，再从 GROMACS 检查点续算。缺失检查点、Gaussian 进程中断等情况保留文件并要求人工处理。不会仅凭超时把仍可能运行的任务重派到另一台电脑。CPU/RAM/GPU 是分配准入条件，不是操作系统资源隔离，线程数等科学参数仍需自行设置。工作目录不是 OS 沙箱，仅处理可信输入。
 
 ## 构建和验证
 
@@ -73,7 +75,7 @@ python scripts\smoke_exe.py dist\ChemCompute\ChemCompute.exe
 
 官方参考：[Inno Setup 编译器](https://jrsoftware.org/ishelp/topic_compilercmdline.htm)、[Tailscale 无人值守配置](https://tailscale.com/docs/how-to/run-unattended)。后者只影响联网工具，不会把 ChemCompute 变成系统服务。
 
-## 桌面工作流（0.2.0）
+## 桌面工作流（0.3.0）
 
 1. **本机与节点概览**：启动/停止/重启后台，查看 CPU、RAM、GPU、GROMACS，打开日志和配置目录。关闭窗口后后台继续运行。
 2. **节点与邀请码**：创建、查看、撤销单次邀请码；停止后台后更新本节点入网地址、名称和邀请码。
@@ -83,3 +85,14 @@ python scripts\smoke_exe.py dist\ChemCompute\ChemCompute.exe
 6. **任务中心**：刷新状态，查看步骤日志与详情，取消任务，复制已结束任务重试，下载并校验结果 ZIP。
 
 [桌面使用指南](docs/desktop-guide.md) 包含无 Python 安装、计算包格式、示例和限制。[DeepSeek 官方 API](https://api-docs.deepseek.com/)；默认模型可在设置里修改。
+
+
+## 0.3.0：Gaussian、依赖安装与恢复
+
+Gaussian 任务选择 `gaussian`，上传含 `.gjf` 或 `.com` 的 ZIP，步骤为 `{"subcommand":"run","arguments":["input.gjf"]}`。默认命令不修改 `%mem`、`%nprocshared`、方法、基组或分子内容；在节点页配置合法 `g16.exe/g09.exe` 路径。静态找到程序不等于授权有效或实际计算验证。日志需出现 Normal termination 才判定成功。Gaussian 中断后不自动改写输入猜测续算方法；原目录与 chk 文件保留。
+
+跨机副本数 1–128 会创建一组独立任务，由可用节点逐个领取；副本共用输入，不自动修改随机种子。它不是 MPI/Linda 分布式单作业。AI 会按所选软件及资源筛选节点。所有参与新版队列的节点必须升级到 0.3.0。
+
+依赖安装页可安装或继续所选组件，查看安装状态和失败原因。需要管理员权限、联网和可能的系统重启；不强制重启。Ubuntu/Debian 仓库 GROMACS 可能为 CPU 构建，勾选显卡驱动不等于获得 CUDA 版 GROMACS。驱动通过 Windows Update 选择硬件匹配的 Display 更新，不安装 WSL Linux 显示驱动。首次干净电脑的完整安装链尚待实机验证。
+
+参见 [部署、恢复与 Gaussian 指南](docs/deployment-v0.3.md)。

@@ -1,15 +1,29 @@
 """Drain output continuously while retaining only a bounded prefix in memory."""
+import json
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 import psutil
 
 
-def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, **kwargs):
+def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, process_record=None, **kwargs):
     proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             stdin=subprocess.DEVNULL, shell=False,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    def save_process(value):
+        if process_record:
+            path = Path(process_record)
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(value), encoding='utf-8')
+            temporary.replace(path)
+    if process_record:
+        try:
+            identity = psutil.Process(proc.pid)
+            save_process({'pid': proc.pid, 'created': identity.create_time(), 'exe': identity.exe(), 'argv': identity.cmdline(), 'finished': False})
+        except psutil.NoSuchProcess:
+            save_process({'finished': True, 'returncode': proc.wait()})
     outputs = [bytearray(), bytearray()]
 
     def drain(pipe, target):
@@ -51,6 +65,8 @@ def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, **kwargs):
         terminate_tree()
         raise
     finally:
+        if proc.poll() is not None:
+            save_process({'finished': True, 'returncode': proc.returncode})
         for thread in threads:
             thread.join(timeout=2)
     return subprocess.CompletedProcess(cmd, proc.returncode,

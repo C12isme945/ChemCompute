@@ -19,7 +19,7 @@ def node(client, headers):
         'hardware': {'cpu_count_logical': 4, 'ram_available_mb': 8192},
         'software': {'gromacs': {'found': True}},
     }).json()
-    return value['node_id'], {'Authorization': 'Bearer ' + value['node_token']}
+    return value['node_id'], {'Authorization': 'Bearer ' + value['node_token'], 'X-ChemCompute-Protocol': '3'}
 
 
 def test_transfer_lifecycle_and_cross_node_access(client, admin_secret):
@@ -34,7 +34,9 @@ def test_transfer_lifecycle_and_cross_node_access(client, admin_secret):
     task = client.post('/api/v2/tasks', headers=admin, json={
         'name': 'roundtrip', 'package_id': uploaded['id'], 'steps': [{'subcommand': 'check'}],
     }).json()['id']
-    assert client.post(f'/api/v2/worker/{worker}/claim', headers=auth).json()['id'] == task
+    claimed = client.post(f'/api/v2/worker/{worker}/claim', headers=auth).json()
+    assert claimed['id'] == task
+    auth['X-Lease-Token'] = claimed['lease_token']
     assert client.post(f'/api/v2/worker/{worker}/claim', headers=auth).json() is None
     path = f'/api/v2/worker/{worker}/tasks/{task}'
     other_path = f'/api/v2/worker/{other}/tasks/{task}'
@@ -63,7 +65,9 @@ def test_priority_resources_cancel_and_retry(client, admin_secret):
         }).json()['id']
     low, high, gpu = submit(1), submit(5), submit(10, True)
     claim_url = f'/api/v2/worker/{worker}/claim'
-    assert client.post(claim_url, headers=auth).json()['id'] == high
+    claimed = client.post(claim_url, headers=auth).json()
+    assert claimed['id'] == high
+    auth['X-Lease-Token'] = claimed['lease_token']
     assert client.post(f'/api/v2/tasks/{high}/retry', headers=admin).status_code == 409
     client.post(f'/api/v2/tasks/{high}/cancel', headers=admin)
     status_url = f'/api/v2/worker/{worker}/tasks/{high}'

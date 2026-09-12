@@ -57,11 +57,11 @@ class Console:
         self.notebook.pack(fill='both', expand=True)
         overview = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(overview, text='本机与节点概览')
-        columns = ('name', 'state', 'cpu', 'ram', 'gpu', 'gromacs')
+        columns = ('name', 'state', 'cpu', 'ram', 'gpu', 'gromacs', 'gaussian')
         self.table = ttk.Treeview(overview, columns=columns, show='headings', height=8)
         for key, title, width in zip(columns,
-                                    ['节点名称', '状态', 'CPU 占用', '内存占用', 'GPU', 'GROMACS'],
-                                    [170, 90, 90, 90, 220, 160]):
+                                    ['节点名称', '状态', 'CPU 占用', '内存占用', 'GPU', 'GROMACS', 'Gaussian'],
+                                    [160, 80, 85, 85, 190, 135, 155]):
             self.table.heading(key, text=title)
             self.table.column(key, width=width, minwidth=60)
         self.table.pack(fill='both', expand=True)
@@ -119,7 +119,8 @@ class Console:
                               f"{hardware.get('cpu_percent', 0):.1f}%",
                               f"{hardware.get('ram_percent', 0):.1f}%",
                               ', '.join(g['name'] for g in hardware.get('gpus', [])) or '未检测到',
-                              software.get('version') or '未检测到'))
+                              software.get('version') or '未检测到',
+                              '已找到（未验证授权）' if node.get('software_info', {}).get('gaussian', {}).get('found') else '未检测到'))
         if not self.busy:
             self.notice.set(data['notice'] or (f"已纳管 {len(data['nodes'])} 个节点。" if data['nodes'] else '暂无节点。可启动本机后台，或在 Web 控制台创建邀请码。'))
 
@@ -189,7 +190,7 @@ def run_console(smoke_test: bool = False) -> int:
         console.render({'role': 'both', 'running': False, 'online': False, 'url': 'http://127.0.0.1:8000', 'notice': 'Smoke test', 'nodes': []})
         assert console.buttons['启动后台'].winfo_exists()
         assert console.table.winfo_exists()
-        assert len(console.notebook.tabs()) == 5
+        assert len(console.notebook.tabs()) == 6
         assert console.workspace.task_tree.winfo_exists()
         root.after(100, console.close)
     root.mainloop()

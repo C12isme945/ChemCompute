@@ -51,7 +51,7 @@ class NodeAgent:
 
         logger.info("正在向控制端 %s 发起入网注册...", self.config.controller_url)
         hw_info = collect_hardware_info()
-        sw_info = collect_software_info(self.config.gromacs_custom_path)
+        sw_info = collect_software_info(self.config.gromacs_custom_path, self.config.gaussian_custom_path)
 
         req_body = NodeRegisterRequest(
             invite_code=self.config.invite_code.strip(),
@@ -104,7 +104,7 @@ class NodeAgent:
         }
 
         hw = collect_hardware_info()
-        sw = collect_software_info(self.config.gromacs_custom_path)
+        sw = collect_software_info(self.config.gromacs_custom_path, self.config.gaussian_custom_path)
 
         req_body = NodeHeartbeatRequest(
             node_id=self.config.node_id,

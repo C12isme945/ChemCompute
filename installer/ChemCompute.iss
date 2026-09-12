@@ -1,4 +1,4 @@
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 [Setup]
 AppId={code:GetAppId}
 AppName=ChemCompute
@@ -24,11 +24,15 @@ Source: "..\dist\ChemCompute\*"; DestDir: "{app}"; Flags: recursesubdirs createa
 Source: "launch.vbs"; DestDir: "{app}"
 Source: "launch-console.vbs"; DestDir: "{app}"
 Source: "..\scripts\network.ps1"; DestDir: "{app}\scripts"
+Source: "..\scripts\dependencies.ps1"; DestDir: "{app}\scripts"
 Source: "..\README.md"; DestDir: "{app}"
 Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: recursesubdirs createallsubdirs
 Source: "..\examples\water-smoke\*"; DestDir: "{app}\examples\water-smoke"
 
 [Tasks]
+Name: wsl; Description: "Install WSL / Ubuntu if missing (administrator permission; restart may be required)"
+Name: gromacs; Description: "Install GROMACS in WSL if missing (repository CPU build)"
+Name: drivers; Description: "Install matching display driver updates from Windows Update"
 Name: startup; Description: "Start ChemCompute in background when I sign in"; Flags: unchecked
 
 [Registry]
@@ -77,7 +81,7 @@ begin
   NodePage.Add('Controller URL:', False);
   NodePage.Add('One-time invite:', True);
   NodePage.Add('Node name:', False);
-  NodePage.Values[0] := 'http://127.0.0.1:8000';
+  NodePage.Values[0] := 'https://chemcompute.666945726.xyz';
   NodePage.Values[2] := GetComputerNameString;
 end;
 
@@ -92,7 +96,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
-  IniPath, Role: String;
+  IniPath, Role, DependencyArgs: String;
   ExitCode: Integer;
 begin
   if CurStep = ssPostInstall then begin
@@ -108,5 +112,12 @@ begin
     if not Exec(ExpandConstant('{app}\ChemCompute.exe'), 'onboard "' + IniPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then ExitCode := 1;
     DeleteFile(IniPath);
     if ExitCode <> 0 then RaiseException('Configuration failed. See README for manual setup.');
+    if ExpandConstant('{param:TESTINSTALL|0}') <> '1' then begin
+      DependencyArgs := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\dependencies.ps1') + '"';
+      if WizardIsTaskSelected('wsl') then DependencyArgs := DependencyArgs + ' -WSL';
+      if WizardIsTaskSelected('gromacs') then DependencyArgs := DependencyArgs + ' -Gromacs';
+      if WizardIsTaskSelected('drivers') then DependencyArgs := DependencyArgs + ' -Drivers';
+      Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), DependencyArgs, '', SW_HIDE, ewNoWait, ExitCode);
+    end;
   end;
 end;

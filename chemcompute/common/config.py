@@ -28,6 +28,7 @@ class NodeConfig(BaseModel):
     invite_code: str | None = None
     heartbeat_interval_seconds: int = 15
     gromacs_custom_path: str | None = None
+    gaussian_custom_path: str | None = None
     workspace_dir: str = "data/workspace"
     max_job_timeout_seconds: int = 3600
 

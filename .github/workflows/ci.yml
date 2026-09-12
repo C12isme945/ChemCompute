@@ -30,6 +30,9 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pytest -q
+      - name: Validate optional dependency plan
+        shell: pwsh
+        run: ./scripts/dependencies.ps1 -WSL -Gromacs -Drivers -PlanOnly
       - name: Install compiler
         shell: pwsh
         run: |

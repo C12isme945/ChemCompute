@@ -54,6 +54,7 @@ class SoftwareInfo(BaseModel):
     os_version: str = ""
     architecture: str = ""
     python_version: str = ""
+    gaussian: dict = Field(default_factory=dict)
     gromacs: GromacsSoftwareInfo = Field(default_factory=GromacsSoftwareInfo)
 
 

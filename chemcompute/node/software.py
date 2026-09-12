@@ -11,11 +11,13 @@ from chemcompute.common.models import SoftwareInfo
 from chemcompute.node.adapters.gromacs import GromacsAdapter
 
 
-def collect_software_info(custom_gromacs_path: str | Path | None = None) -> SoftwareInfo:
+def collect_software_info(custom_gromacs_path: str | Path | None = None, gaussian_path: str | None = None) -> SoftwareInfo:
     """搜集操作系统及软件清单 (包含 GROMACS 探测)"""
     adapter = GromacsAdapter(custom_executable_path=custom_gromacs_path)
     gmx_info = adapter.probe()
 
+    from chemcompute.node.adapters.gaussian import GaussianAdapter
+    gaussian = GaussianAdapter(gaussian_path).probe()
     return SoftwareInfo(
         hostname=socket.gethostname(),
         os_name=platform.system(),
@@ -24,4 +26,5 @@ def collect_software_info(custom_gromacs_path: str | Path | None = None) -> Soft
         architecture=platform.machine(),
         python_version=sys.version.split()[0],
         gromacs=gmx_info,
+        gaussian=gaussian,
     )

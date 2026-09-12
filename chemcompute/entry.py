@@ -93,6 +93,11 @@ def desktop_run() -> int:
 
         threading.Thread(target=node_loop, daemon=True).start()
     if role in {"controller", "both"}:
+        from chemcompute.tunnel import start_configured_tunnel
+        try:
+            start_configured_tunnel()
+        except Exception:
+            logging.exception("Configured public tunnel unavailable")
         import uvicorn
 
         from chemcompute.controller.app import create_app

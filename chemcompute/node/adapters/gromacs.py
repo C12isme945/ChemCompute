@@ -206,6 +206,7 @@ class GromacsAdapter:
         timeout_seconds: int = 300,
         custom_cwd: Path | str | None = None,
         cancel_event=None,
+        process_record=None,
     ) -> ExecutionResult:
         """
         受控有界执行 GROMACS 子命令：
@@ -294,6 +295,7 @@ class GromacsAdapter:
                 text=True,
                 timeout=bounded_timeout + 10 if self._wsl else bounded_timeout,
                 cancel_event=None if self._wsl else cancel_event,
+                process_record=process_record,
                 shell=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
