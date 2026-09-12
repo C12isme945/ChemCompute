@@ -65,6 +65,10 @@ app = FastAPI(
 app.state.db = db
 app.state.storage_root = STORAGE_ROOT
 
+
+def create_app(cfg=None) -> FastAPI:
+    return app
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

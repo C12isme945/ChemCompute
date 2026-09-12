@@ -14,3 +14,4 @@ controller_data/
 *.db
 *.sqlite3
 .pytest_cache/
+*.spec

@@ -77,7 +77,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release already published; verified CI binaries remain in the workflow artifact."
+            echo "Release already published; updating release assets with --clobber..."
+            gh release upload "$TAG" release/* --clobber
           else
             gh release create "$TAG" release/* --prerelease --title "ChemCompute $TAG" --generate-notes
           fi

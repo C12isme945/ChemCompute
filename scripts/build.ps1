@@ -6,7 +6,15 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
     if (-not $ISCC) {
         $ISCC = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
-        if (-not $ISCC) { $ISCC = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+        $candidates = @(
+            "E:\Research\InnoSetup\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+        )
+        foreach ($c in $candidates) {
+            if (Test-Path $c) { $ISCC = $c; break }
+        }
     }
     if (-not (Test-Path $ISCC)) { throw 'Install Inno Setup 6 or provide -ISCC path.' }
     & $ISCC installer\ChemCompute.iss
