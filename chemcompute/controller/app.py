@@ -22,11 +22,38 @@ from chemcompute.common.models import NodeState, JobStatus
 from fastapi import WebSocket, WebSocketDisconnect
 
 
-DATA_DIR = Path.cwd() / "controller_data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "chemcompute.db"
-STORAGE_ROOT = DATA_DIR / "storage"
-STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+def _resolve_data_and_db() -> tuple[Path, Path, Path]:
+    cwd = Path.cwd()
+    ctrl_yaml = cwd / "config" / "controller.yaml"
+    if ctrl_yaml.exists():
+        try:
+            import yaml
+            cdata = yaml.safe_load(ctrl_yaml.read_text(encoding="utf-8")) or {}
+            if cdata.get("db_path"):
+                p = Path(cdata["db_path"])
+                db_p = p if p.is_absolute() else (cwd / p)
+                d_dir = db_p.parent
+                s_root = d_dir / "storage"
+                d_dir.mkdir(parents=True, exist_ok=True)
+                s_root.mkdir(parents=True, exist_ok=True)
+                return d_dir, db_p, s_root
+        except Exception:
+            pass
+    if (cwd / "data").exists():
+        d_dir = cwd / "data"
+        db_p = d_dir / "chemcompute.db"
+        s_root = d_dir / "storage"
+        s_root.mkdir(parents=True, exist_ok=True)
+        return d_dir, db_p, s_root
+    d_dir = cwd / "controller_data"
+    d_dir.mkdir(parents=True, exist_ok=True)
+    db_p = d_dir / "chemcompute.db"
+    s_root = d_dir / "storage"
+    s_root.mkdir(parents=True, exist_ok=True)
+    return d_dir, db_p, s_root
+
+
+DATA_DIR, DB_PATH, STORAGE_ROOT = _resolve_data_and_db()
 
 db = Database(DB_PATH)
 db.seed_official_releases()
@@ -140,3 +167,16 @@ def get_cluster_stats():
         "running_jobs": len(running_jobs),
         "completed_jobs": len(completed_jobs)
     }
+
+
+@app.get("/api/v1/nodes")
+def list_nodes_v1():
+    nodes = db.list_nodes()
+    res = []
+    for n in nodes:
+        d = n.model_dump()
+        if d.get("status") in ("idle", "busy", "online"):
+            d["status"] = "online"
+        res.append(d)
+    return res
+
