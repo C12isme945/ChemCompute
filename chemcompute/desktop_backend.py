@@ -157,7 +157,20 @@ def snapshot() -> dict:
                 response.raise_for_status()
                 result['nodes'] = response.json()
             elif current_role == 'node':
-                result['notice'] = '计算节点模式：远程管理请在 Web 控制台登录。'
+                result['notice'] = '等待自动注册。连接成功后，任务将由主控自动安排。'
     except (httpx.HTTPError, ValueError):
         result['notice'] = '主控端尚未就绪或认证失败，请检查地址与日志。'
+    if current_role == 'node':
+        try:
+            status = json.loads(Path('config/connection-status.json').read_text('utf-8'))
+            fresh = process is not None and time.time() - status['time'] < 90
+            messages = {'connected': '已加入并连接主控。任务自动领取，可关闭此窗口；请保持登录、联网且不休眠。',
+                        'registered': '已成功加入，等待首次心跳确认。',
+                        'needs_invite': '需要有效邀请码，请让主控重新导出专属部署包或在节点页更新配置。',
+                        'registration_failed': '注册未成功：请检查邀请码是否过期或已使用。',
+                        'waiting': '暂时无法连接，后台会自动重试。'}
+            result['notice'] = messages.get(status['state'], '等待连接') if fresh else '后台未连接或心跳已过期；运行中的后台会自动重试。'
+            result['online'] = fresh and status['state'] == 'connected'
+        except (OSError, ValueError, KeyError, TypeError):
+            result['online'] = False
     return result

@@ -5,7 +5,7 @@ import json
 import shlex
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from chemcompute import deepseek
 from chemcompute import desktop_client as api
@@ -288,6 +288,7 @@ class Workspace:
         self.invite_note = self.field(row, '备注', '', 30)
         ttk.Button(row, text='创建邀请码', command=self.create_invite).pack(side='left')
         ttk.Button(row, text='刷新邀请码', command=self.refresh_invites).pack(side='left', padx=8)
+        ttk.Button(row, text='导出专属邀请部署包', command=self.export_invitation).pack(side='left')
         self.invite_tree = ttk.Treeview(self.invite_tab, columns=('prefix', 'expires', 'used'), show='headings', height=4)
         for name, label in [('prefix', '邀请码前缀'), ('expires', '到期时间'), ('used', '已使用')]:
             self.invite_tree.heading(name, text=label)
@@ -334,6 +335,43 @@ class Workspace:
         except Exception as exc:
             self.console.notice.set(str(exc))
 
+
+    def export_invitation(self):
+        from chemcompute.invite_bundle import export_bundle, validate_url
+        try:
+            url = validate_url(self.join_url.get().strip())
+            # Local Both nodes use loopback internally; export the public entry.
+        except ValueError:
+            url = 'https://chemcompute.666945726.xyz'
+        url = simpledialog.askstring('邀请部署地址', '新电脑连接的 HTTPS 主控地址：', initialvalue=url, parent=self.root)
+        if not url:
+            return
+        try:
+            validate_url(url)
+            hours = int(self.invite_hours.get())
+            if not 1 <= hours <= 168:
+                raise ValueError('邀请有效期应为 1–168 小时。')
+        except ValueError as exc:
+            self.console.notice.set(str(exc))
+            return
+        target = filedialog.asksaveasfilename(parent=self.root, title='保存单次邀请部署包', defaultextension='.zip', initialfile='ChemCompute-Join.zip', filetypes=[('邀请部署包', '*.zip')])
+        if not target:
+            return
+        note = self.invite_note.get()
+        media = {}
+        licensed = self.media_license.get()
+        if self.include_media.get():
+            if not licensed:
+                self.console.notice.set('请先在依赖安装页确认目标电脑具备安装许可。')
+                return
+            media = {name: var.get() for name, var in self.media_paths.items() if var.get()}
+            if not media:
+                self.console.notice.set('请先在依赖安装页选择正式安装程序。')
+                return
+        def complete(path):
+            self.show_text('专属部署包已生成', f'{path}\n\n仅发给一台受邀电脑。请完整解压，再双击安装器，确认服务器后安装。后台会自动注册并连接。\n\n包内为一次性邀请码，不含管理员密钥。过期或已使用后请重新导出。')
+            self.refresh_invites()
+        self.run(lambda: export_bundle(target, url, hours, note, media, licensed), complete)
 
     def create_invite(self):
         try:
@@ -421,6 +459,33 @@ class Workspace:
         self.set_steps(PRESETS[name])
 
     def build_deployment(self):
+        gaussian = ttk.LabelFrame(self.deploy_tab, text='Gaussian / GaussView 安装服务', padding=14)
+        gaussian.pack(fill='x', pady=(0, 18))
+        self.media_paths = {}
+        for name, label in [('Gaussian-Setup.exe', 'Gaussian 安装程序'), ('GaussView-Setup.exe', 'GaussView 安装程序')]:
+            row = ttk.Frame(gaussian)
+            row.pack(fill='x', pady=4)
+            variable = tk.StringVar()
+            self.media_paths[name] = variable
+            ttk.Label(row, text=label, width=20).pack(side='left')
+            ttk.Entry(row, textvariable=variable, width=46).pack(side='left', fill='x', expand=True)
+            ttk.Button(row, text='选择', command=lambda var=variable: self.select_media(var)).pack(side='left', padx=6)
+            ttk.Button(row, text='安装', command=lambda var=variable: self.install_gaussian_media(var)).pack(side='left')
+        self.media_license = tk.BooleanVar(value=False)
+        self.include_media = tk.BooleanVar(value=False)
+        ttk.Checkbutton(gaussian, text='我确认具有在目标电脑安装所选软件的许可', variable=self.media_license).pack(anchor='w', pady=4)
+        ttk.Checkbutton(gaussian, text='导出专属邀请部署包时附带上述介质（仅私下发给获授权电脑）', variable=self.include_media).pack(anchor='w')
+        ttk.Label(gaussian, text='商业介质不上传 GitHub。安装采用厂商原向导，不自动填写许可证。安装到常见目录后自动探测。', wraplength=780).pack(anchor='w', pady=6)
+        actions = ttk.Frame(gaussian)
+        actions.pack(fill='x')
+        ttk.Button(actions, text='定位已安装 g09.exe / g16.exe', command=self.locate_gaussian).pack(side='left')
+        ttk.Button(actions, text='检测现有 Gaussian', command=self.detect_gaussian).pack(side='left', padx=8)
+        try:
+            saved = json.loads(Path('config/install-media.json').read_text('utf-8'))
+            for name, variable in self.media_paths.items():
+                variable.set(saved.get(name, ''))
+        except (OSError, ValueError):
+            pass
         self.install_choices = {}
         for flag, label in [('WSL', 'WSL / Ubuntu（缺失时安装）'), ('Gromacs', 'GROMACS（仓库版本，可能仅支持 CPU）'), ('Drivers', 'Windows Update 匹配的显示驱动')]:
             variable = tk.BooleanVar(value=True)
@@ -432,6 +497,29 @@ class Workspace:
         self.dependency_text = tk.Text(self.deploy_tab, height=8, wrap='word')
         self.dependency_text.pack(fill='both', expand=True)
         self.deployment_status()
+
+    def select_media(self, variable):
+        path = filedialog.askopenfilename(parent=self.root, title='选择已有许可的正式安装程序', filetypes=[('安装程序', '*.exe')])
+        if path:
+            variable.set(path)
+            Path('config').mkdir(exist_ok=True)
+            Path('config/install-media.json').write_text(json.dumps({name: var.get() for name, var in self.media_paths.items()}), encoding='utf-8')
+
+    def install_gaussian_media(self, variable):
+        from chemcompute.gaussian_setup import launch_installer
+        path, licensed = variable.get(), self.media_license.get()
+        self.run(lambda: launch_installer(Path(path), licensed), lambda _: self.console.notice.set('厂商安装向导已打开。安装后点击检测现有 Gaussian。'))
+
+    def locate_gaussian(self):
+        from chemcompute.gaussian_setup import configure_node
+        path = filedialog.askopenfilename(parent=self.root, title='选择已安装 g09.exe / g16.exe', filetypes=[('Gaussian 主程序', '*.exe')])
+        if path:
+            self.run(lambda: configure_node(Path(path)), lambda _: self.gaussian_path.set(path))
+
+    def detect_gaussian(self):
+        from chemcompute.node.adapters.gaussian import GaussianAdapter
+        path = self.gaussian_path.get().strip() or None
+        self.run(lambda: GaussianAdapter(path).probe(), lambda result: self.show_text('Gaussian 探测结果', json.dumps(result, ensure_ascii=False, indent=2)))
 
     def deployment_status(self):
         import os

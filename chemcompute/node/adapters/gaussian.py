@@ -171,6 +171,18 @@ class GaussianAdapter:
                 if p.is_file() and p.name.lower() in valid_names:
                     return p
 
+        if is_win:
+            roots = [Path(os.environ.get('SystemDrive', 'C:') + '/'),
+                     Path(os.environ.get('ProgramFiles', 'C:/Program Files')),
+                     Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')),
+                     Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Programs']
+            for root in roots:
+                for folder in ('G09W', 'G16W', 'Gaussian 09W', 'Gaussian 16W'):
+                    for name in binary_names:
+                        candidate = root / folder / name
+                        if candidate.is_file():
+                            return candidate.resolve()
+
         return None
 
     def _validate_input(self, arguments: list[str]) -> tuple[Path | None, str | None]:

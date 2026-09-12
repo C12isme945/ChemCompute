@@ -44,6 +44,7 @@ class NodeAgent:
             return True
 
         if not self.config.invite_code:
+            self.write_connection_status('needs_invite')
             logger.error(
                 "节点尚未在控制端登记，且未提供 invite_code。请在配置文件或参数中指定有效邀请码后重试。"
             )
@@ -67,6 +68,7 @@ class NodeAgent:
             with httpx.Client(timeout=15.0) as client:
                 resp = client.post(register_url, json=req_body.model_dump())
                 if resp.status_code != 200:
+                    self.write_connection_status('registration_failed')
                     err_msg = resp.json().get("detail", resp.text) if resp.headers.get("content-type") == "application/json" else resp.text
                     logger.error("向控制端注册失败 (%d): %s", resp.status_code, err_msg)
                     return False
@@ -87,8 +89,10 @@ class NodeAgent:
                         logger.warning("保存更新后的节点配置失败: %s", save_err)
 
                 logger.info(">>> 节点注册成功! 分配节点 ID: %s <<<", self.config.node_id)
+                self.write_connection_status('registered')
                 return True
         except Exception as e:
+            self.write_connection_status('waiting')
             logger.error("连接控制端注册异常: %s", e)
             return False
 
@@ -118,6 +122,7 @@ class NodeAgent:
 
         resp = client.post(heartbeat_url, json=req_body.model_dump(), headers=headers)
         if resp.status_code == 401:
+            self.write_connection_status('needs_invite')
             logger.error("心跳上报鉴权失败：节点令牌失效，请重新生成邀请码注册")
             return []
         if resp.status_code != 200:
@@ -125,8 +130,22 @@ class NodeAgent:
             return []
 
         data = resp.json()
+        self.write_connection_status('connected')
         raw_jobs = data.get("assigned_jobs", [])
         return [JobSpec(**j) for j in raw_jobs]
+
+    def write_connection_status(self, state):
+        """Local UI feedback without credentials or remote exception contents."""
+        if not self.config_path:
+            return
+        import json
+        try:
+            target = self.config_path.with_name('connection-status.json')
+            temporary = target.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'state': state, 'time': time.time()}), encoding='utf-8')
+            temporary.replace(target)
+        except OSError:
+            logger.warning('Cannot save local connection status')
 
     def execute_and_report_job(self, client: httpx.Client, job: JobSpec) -> None:
         """执行单一受控 GROMACS 计算作业并回传执行成果与日志"""

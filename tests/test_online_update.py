@@ -92,3 +92,33 @@ def test_source_build_cannot_launch_installer(tmp_path, monkeypatch):
     monkeypatch.setattr(update.sys, 'frozen', False, raising=False)
     with pytest.raises(RuntimeError):
         update.launch_update({}, tmp_path/'setup.exe')
+
+
+def test_transient_download_retries_then_verifies(tmp_path, monkeypatch):
+    raw = b'network recovery'
+    data = update.select_release([release(raw=raw)], '0.4.0')
+    calls = []
+    def handler(request):
+        calls.append(request.url)
+        if len(calls) == 1:
+            raise httpx.ConnectError('Temporary connection failure', request=request)
+        return httpx.Response(200, content=raw)
+    fake_http(monkeypatch, handler)
+    from tenacity import wait_none
+    download = update.download_update.retry_with(wait=wait_none())
+    target = download(data, tmp_path/'setup.exe')
+    assert target.read_bytes() == raw
+    assert len(calls) == 2
+    assert not list(tmp_path.glob('*.partial-*'))
+
+
+def test_integrity_failure_is_not_retried(tmp_path, monkeypatch):
+    data = update.select_release([release(raw=b'good')], '0.4.0')
+    calls = []
+    def handler(request):
+        calls.append(request.url)
+        return httpx.Response(200, content=b'evil')
+    fake_http(monkeypatch, handler)
+    with pytest.raises(ValueError):
+        update.download_update(data, tmp_path/'setup.exe')
+    assert len(calls) == 1

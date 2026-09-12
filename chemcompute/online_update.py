@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 import httpx
 import psutil
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
 
 from chemcompute import __version__
 from chemcompute import desktop_backend as backend
@@ -86,6 +87,8 @@ def select_release(releases, current_version=__version__, include_prerelease=Tru
     return max(candidates, key=lambda x: x[0])[1] if candidates else None
 
 
+@retry(retry=retry_if_exception_type(httpx.TransportError), stop=stop_after_attempt(3),
+       wait=wait_random_exponential(multiplier=1, max=4), reraise=True)
 def check_updates(current_version=__version__, include_prerelease=True):
     with httpx.Client(timeout=20, follow_redirects=False) as client:
         response = client.get(API, headers={'Accept': 'application/vnd.github+json', 'User-Agent': f'ChemCompute/{__version__}'})
@@ -109,7 +112,11 @@ def verified_file(path, release):
     return digest.hexdigest() == release['sha256']
 
 
+@retry(retry=retry_if_exception_type(httpx.TransportError), stop=stop_after_attempt(3),
+       wait=wait_random_exponential(multiplier=1, max=4), reraise=True)
 def download_update(release, target, progress=lambda done, total: None, cancel=lambda: False):
+    if cancel():
+        raise InterruptedError('下载已取消')
     target = Path(target)
     url = trusted_url(release['url'])
     if not re.fullmatch('[0-9a-f]{64}', release['sha256']) or not 0 < release['size'] <= MAX_SIZE:

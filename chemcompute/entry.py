@@ -39,6 +39,15 @@ def onboard(path: str) -> None:
     role = v.get("role", "both")
     if role not in {"controller", "node", "both"}:
         raise ValueError("Invalid role")
+    if v.get('invited') == '1':
+        import re
+
+        from chemcompute.invite_bundle import validate_url
+        validate_url(v.get('url', ''))
+        if role != 'node' or not re.fullmatch(r'cc-inv-[A-Za-z0-9_-]{32}', v.get('invite', '')):
+            raise ValueError('Invalid invitation profile')
+        if Path('role.json').exists():
+            raise ValueError('Existing enrollment must be changed from the desktop console')
     ensure_secure_directory("config")
     ensure_secure_directory("data")
     if role in {"controller", "both"} and not Path("config/controller.yaml").exists():

@@ -32,8 +32,8 @@ class Console:
             asset,
             molecules,
         )
-        root.geometry('1380x880')
-        root.minsize(1180, 780)
+        root.geometry(f'{min(1380, root.winfo_screenwidth()-80)}x{min(880, root.winfo_screenheight()-100)}')
+        root.minsize(min(1180, root.winfo_screenwidth()-80), min(780, root.winfo_screenheight()-100))
         root.configure(background=BG)
         self.style = apply_theme(root)
         self.logo = asset(root, 'logo.png', 18)

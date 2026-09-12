@@ -1,4 +1,4 @@
-#define AppVersion "0.5.0"
+#define AppVersion "0.6.0"
 [Setup]
 AppId={code:GetAppId}
 AppName=ChemCompute
@@ -28,15 +28,19 @@ Source: "..\scripts\dependencies.ps1"; DestDir: "{app}\scripts"
 Source: "..\README.md"; DestDir: "{app}"
 Source: "..\docs\*"; DestDir: "{app}\docs"; Flags: recursesubdirs createallsubdirs
 Source: "..\examples\water-smoke\*"; DestDir: "{app}\examples\water-smoke"
+Source: "{src}\Gaussian-Setup.exe"; DestDir: "{app}\media"; Flags: external skipifsourcedoesntexist; Tasks: gaussian
+Source: "{src}\GaussView-Setup.exe"; DestDir: "{app}\media"; Flags: external skipifsourcedoesntexist; Tasks: gaussview
 
 [Tasks]
 Name: wsl; Description: "Install WSL / Ubuntu if missing (administrator permission; restart may be required)"
 Name: gromacs; Description: "Install GROMACS in WSL if missing (repository CPU build)"
 Name: drivers; Description: "Install matching display driver updates from Windows Update"
-Name: startup; Description: "Start ChemCompute in background when I sign in"; Flags: unchecked
+Name: startup; Description: "Start ChemCompute in background when I sign in"
+Name: gaussian; Description: "Install supplied Gaussian media (confirm this computer is licensed; vendor wizard may require input)"; Check: HasGaussianMedia; Flags: unchecked
+Name: gaussview; Description: "Install supplied GaussView media (confirm this computer is licensed)"; Check: HasGaussViewMedia; Flags: unchecked
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: ChemCompute; ValueData: "wscript.exe ""{app}\launch.vbs"""; Tasks: startup; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: ChemCompute; ValueData: "wscript.exe ""{app}\launch.vbs"""; Tasks: startup; Check: IsRealInstall; Flags: uninsdeletevalue
 
 [Icons]
 Name: "{userdesktop}\{code:GetShortcutName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; WorkingDir: "{app}"; Comment: "ChemCompute desktop control console"
@@ -54,11 +58,28 @@ var
   RolePage: TInputOptionWizardPage;
   NodePage: TInputQueryWizardPage;
   HostPage: TInputQueryWizardPage;
+  JoinProfile: String;
+  HasJoinProfile: Boolean;
 
 function GetAppId(Param: String): String;
 begin
   Result := '{58D6F106-68F0-48A8-B1F3-D40716888B80}';
   if ExpandConstant('{param:TESTINSTALL|0}') = '1' then Result := Result + '-SmokeTest';
+end;
+
+function IsRealInstall: Boolean;
+begin
+  Result := ExpandConstant('{param:TESTINSTALL|0}') <> '1';
+end;
+
+function HasGaussianMedia: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{src}\Gaussian-Setup.exe'));
+end;
+
+function HasGaussViewMedia: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{src}\GaussView-Setup.exe'));
 end;
 
 function GetShortcutName(Param: String): String;
@@ -83,6 +104,27 @@ begin
   NodePage.Add('Node name:', False);
   NodePage.Values[0] := 'https://chemcompute.666945726.xyz';
   NodePage.Values[2] := GetComputerNameString;
+  JoinProfile := ExpandConstant('{src}\chemcompute-join.ini');
+  HasJoinProfile := FileExists(JoinProfile) and (ExpandConstant('{param:UPDATE|0}') <> '1');
+  if HasJoinProfile then begin
+    RolePage.SelectedValueIndex := 1;
+    NodePage.Values[0] := GetIniString('join', 'url', '', JoinProfile);
+    NodePage.Values[1] := GetIniString('join', 'invite', '', JoinProfile);
+    NodePage.Description := 'Confirm joining this controller. It can schedule chemistry tasks on this computer. One invitation is valid for one computer only.';
+  end;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := HasJoinProfile and ((PageID = RolePage.ID) or (PageID = HostPage.ID));
+  if (PageID = HostPage.ID) and (RolePage.SelectedValueIndex = 1) then Result := True;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if HasJoinProfile and FileExists(ExpandConstant('{localappdata}\ChemComputeData\role.json')) and (ExpandConstant('{param:TESTINSTALL|0}') <> '1') then
+    Result := 'This computer already has ChemCompute configuration. Use the desktop Nodes page to change controller; existing enrollment was preserved.';
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -111,10 +153,17 @@ begin
     SetIniString('setup', 'url', NodePage.Values[0], IniPath);
     SetIniString('setup', 'invite', NodePage.Values[1], IniPath);
     SetIniString('setup', 'name', NodePage.Values[2], IniPath);
+    if HasJoinProfile then SetIniString('setup', 'invited', '1', IniPath);
     if not Exec(ExpandConstant('{app}\ChemCompute.exe'), 'onboard "' + IniPath + '"', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then ExitCode := 1;
     DeleteFile(IniPath);
     if ExitCode <> 0 then RaiseException('Configuration failed. See README for manual setup.');
+    if IsRealInstall or (ExpandConstant('{param:TESTSTART|0}') = '1') then
+      Exec(ExpandConstant('{sys}\wscript.exe'), '"' + ExpandConstant('{app}\launch.vbs') + '"', '', SW_HIDE, ewNoWait, ExitCode);
     if ExpandConstant('{param:TESTINSTALL|0}') <> '1' then begin
+      if WizardIsTaskSelected('gaussian') then
+        ShellExec('', ExpandConstant('{app}\media\Gaussian-Setup.exe'), '', '', SW_SHOWNORMAL, ewNoWait, ExitCode);
+      if WizardIsTaskSelected('gaussview') then
+        ShellExec('', ExpandConstant('{app}\media\GaussView-Setup.exe'), '', '', SW_SHOWNORMAL, ewNoWait, ExitCode);
       DependencyArgs := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\dependencies.ps1') + '"';
       if WizardIsTaskSelected('wsl') then DependencyArgs := DependencyArgs + ' -WSL';
       if WizardIsTaskSelected('gromacs') then DependencyArgs := DependencyArgs + ' -Gromacs';
