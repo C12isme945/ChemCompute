@@ -22,47 +22,52 @@ class Console:
         self.closed = False
         self.timer = None
         root.title(f'ChemCompute 桌面操控台 · {__version__}')
-        root.geometry('1220x860')
-        root.minsize(1100, 780)
-        root.configure(background='#f1f5f8')
-        style = ttk.Style(root)
-        style.theme_use('clam')
-        style.configure('TFrame', background='#ffffff')
-        style.configure('TLabel', background='#ffffff', foreground='#19364b', font=('Microsoft YaHei UI', 10))
-        style.configure('Title.TLabel', font=('Microsoft YaHei UI', 21, 'bold'), foreground='#12324d')
-        style.configure('TButton', font=('Microsoft YaHei UI', 10), padding=(13, 8), background='#f1f6f8', foreground='#19364b', borderwidth=0)
-        style.map('TButton', background=[('active', '#dcefed'), ('disabled', '#f1f3f5')])
-        style.configure('Accent.TButton', background='#007f82', foreground='#ffffff')
-        style.map('Accent.TButton', background=[('active', '#006366'), ('disabled', '#b4caca')])
-        style.configure('TNotebook', background='#edf3f7', borderwidth=0, tabmargins=(0, 0, 0, 8))
-        style.configure('TNotebook.Tab', font=('Microsoft YaHei UI', 10), padding=(18, 12), background='#edf3f7', foreground='#516d80')
-        style.map('TNotebook.Tab', background=[('selected', '#ffffff')], foreground=[('selected', '#007f82')])
-        style.configure('Treeview', font=('Microsoft YaHei UI', 10), rowheight=42, background='#ffffff', fieldbackground='#ffffff', foreground='#19364b', borderwidth=0)
-        style.configure('Treeview.Heading', font=('Microsoft YaHei UI', 10, 'bold'), background='#edf3f7', foreground='#426176', padding=(8, 12))
-        style.map('Treeview', background=[('selected', '#d8efeb')], foreground=[('selected', '#19364b')])
-        style.configure('TLabelframe', background='#ffffff', bordercolor='#dce5ec')
-        style.configure('TLabelframe.Label', background='#ffffff', foreground='#19364b', font=('Microsoft YaHei UI', 10, 'bold'))
-        style.configure('TCheckbutton', background='#ffffff', font=('Microsoft YaHei UI', 10))
-        style.configure('TEntry', padding=6)
-        style.configure('TCombobox', padding=6)
-        style.configure('Horizontal.TProgressbar', background='#007f82', troughcolor='#e4edf2', borderwidth=0)
-        root.option_add('*Text.Font', ('Microsoft YaHei UI', 10))
-        header = tk.Frame(root, background='#102c42', padx=26, pady=18)
-        header.pack(fill='x')
-        tk.Label(header, text='Cc', font=('Segoe UI', 20, 'bold'), background='#174459', foreground='#9cede0', padx=12, pady=5).pack(side='left', padx=(0, 16))
-        brand = tk.Frame(header, background='#102c42')
-        brand.pack(side='left')
-        tk.Label(brand, text='ChemCompute', font=('Segoe UI', 23, 'bold'), background='#102c42', foreground='#ffffff').pack(anchor='w')
-        tk.Label(brand, text='化学计算工作台  /  COMPUTE WORKSPACE', font=('Microsoft YaHei UI', 9), background='#102c42', foreground='#b0c8d9').pack(anchor='w')
-        tk.Label(header, text=f'v{__version__}  ·  预发布', font=('Microsoft YaHei UI', 10), background='#102c42', foreground='#9cede0').pack(side='right')
-        frame = ttk.Frame(root, padding=(24, 16))
+        from chemcompute.desktop_theme import (
+            BG,
+            FONT,
+            INK,
+            MUTED,
+            SIDEBAR,
+            apply_theme,
+            asset,
+            molecules,
+        )
+        root.geometry('1380x880')
+        root.minsize(1180, 780)
+        root.configure(background=BG)
+        self.style = apply_theme(root)
+        self.logo = asset(root, 'logo.png', 18)
+        self.servers = asset(root, 'servers.png', 6)
+        root.iconphoto(True, self.logo)
+        sidebar = tk.Frame(root, background=SIDEBAR, width=234, padx=16, pady=22)
+        sidebar.pack(side='left', fill='y')
+        sidebar.pack_propagate(False)
+        tk.Label(sidebar, image=self.logo, background=SIDEBAR).pack(anchor='w')
+        tk.Label(sidebar, text='ChemCompute', font=('Segoe UI', 20, 'bold'), background=SIDEBAR, foreground=INK).pack(anchor='w', pady=(2, 4))
+        tk.Label(sidebar, text='桌面操控台 / 私人化学计算网络', font=(FONT, 8), background=SIDEBAR, foreground=MUTED).pack(anchor='w')
+        tk.Label(sidebar, text=f'v{__version__} · 预发布', font=(FONT, 9), background=SIDEBAR, foreground=MUTED).pack(anchor='w', pady=(6, 25))
+        self.navigation = tk.Frame(sidebar, background=SIDEBAR)
+        self.navigation.pack(fill='x')
+        tk.Label(sidebar, text='Compute for\na Better Chemistry', justify='left', background=SIDEBAR, foreground=MUTED, font=('Segoe UI', 10)).pack(side='bottom', anchor='w', pady=8)
+        motif = tk.Canvas(sidebar, width=220, height=140, background=SIDEBAR, highlightthickness=0)
+        motif.pack(side='bottom')
+        molecules(motif)
+        frame = ttk.Frame(root, padding=(22, 16), style='Shell.TFrame')
         frame.pack(fill='both', expand=True)
+        header = tk.Frame(frame, background=BG, height=108)
+        header.pack(fill='x', pady=(0, 12))
+        motif_header = tk.Canvas(header, width=235, height=108, background=BG, highlightthickness=0)
+        motif_header.pack(side='right')
+        molecules(motif_header)
+        self.page_title = tk.StringVar(value='本机与节点概览')
+        tk.Label(header, textvariable=self.page_title, background=BG, foreground=INK, font=(FONT, 25, 'bold')).pack(anchor='w', pady=(10, 4))
+        tk.Label(header, text='连接你的化学计算世界 · 从本地到集群', background=BG, foreground=MUTED, font=(FONT, 11)).pack(anchor='w')
         self.status = tk.StringVar(value='正在读取本机状态…')
         self.address = tk.StringVar()
         self.notice = tk.StringVar(value='关闭窗口后后台继续运行。')
-        ttk.Label(frame, textvariable=self.status).pack(anchor='w')
-        ttk.Label(frame, textvariable=self.address, foreground='#607588').pack(anchor='w', pady=(4, 12))
-        actions = ttk.Frame(frame)
+        ttk.Label(frame, textvariable=self.status, style='Shell.TLabel').pack(anchor='w')
+        ttk.Label(frame, textvariable=self.address, style='Shell.TLabel').pack(anchor='w', pady=(4, 12))
+        actions = ttk.Frame(frame, style='Shell.TFrame')
         actions.pack(fill='x', pady=(0, 16))
         self.buttons = {}
         for text, action in [('启动后台', lambda: self.perform(backend.start)),
@@ -76,21 +81,23 @@ class Console:
         ttk.Button(actions, text='在线更新', command=lambda: self.notebook.select(self.updates.frame)).pack(side='right')
         self.notebook = ttk.Notebook(frame)
         self.notebook.pack(fill='both', expand=True)
-        overview = ttk.Frame(self.notebook, padding=18)
+        overview = ttk.Frame(self.notebook, padding=14, style='Shell.TFrame')
         self.notebook.add(overview, text='节点概览')
-        ttk.Label(overview, text='算力一览', font=('Microsoft YaHei UI', 19, 'bold')).pack(anchor='w', pady=(0, 4))
-        ttk.Label(overview, text='节点状态来自实时心跳；软件探测不代表许可证与科学模型已验证。', foreground='#607588').pack(anchor='w', pady=(0, 16))
-        cards = tk.Frame(overview, background='#ffffff')
+        ttk.Label(overview, text='算力一览', style='Shell.TLabel', font=('Microsoft YaHei UI', 17, 'bold')).pack(anchor='w', pady=(0, 4))
+        ttk.Label(overview, text='节点状态来自实时心跳；软件探测不代表许可证与科学模型已验证。', style='Shell.TLabel').pack(anchor='w', pady=(0, 16))
+        cards = tk.Frame(overview, background=BG)
         cards.pack(fill='x', pady=(0, 18))
         self.metrics = {}
         for index, (key, title) in enumerate([('online', '在线节点'), ('gromacs', 'GROMACS 可用节点'), ('gaussian', 'Gaussian 已探测'), ('gpu', '已探测 GPU')]):
-            card = tk.Frame(cards, background='#f0f6f8', padx=18, pady=14)
-            card.grid(row=0, column=index, sticky='nsew', padx=(0, 10 if index < 3 else 0))
-            cards.columnconfigure(index, weight=1)
+            from chemcompute.desktop_theme import Panel
+            surface = Panel(cards, height=116)
+            surface.grid(row=0, column=index, sticky='nsew', padx=(0, 10 if index < 3 else 0))
+            card = surface.body
+            cards.columnconfigure(index, weight=1, uniform='metrics')
             value = tk.StringVar(value='—')
             self.metrics[key] = value
-            tk.Label(card, text=title, background='#f0f6f8', foreground='#516d80', font=('Microsoft YaHei UI', 10)).pack(anchor='w')
-            tk.Label(card, textvariable=value, background='#f0f6f8', foreground='#007f82', font=('Segoe UI', 26, 'bold')).pack(anchor='w', pady=(4, 0))
+            tk.Label(card, text=title, background='#ffffff', foreground='#516d80', font=('Microsoft YaHei UI', 10)).pack(anchor='w')
+            tk.Label(card, textvariable=value, background='#ffffff', foreground='#246cf5', font=('Segoe UI', 26, 'bold')).pack(anchor='w', pady=(4, 0))
         grid = ttk.Frame(overview)
         grid.pack(fill='both', expand=True)
         columns = ('name', 'state', 'cpu', 'ram', 'gpu', 'gromacs', 'gaussian')
@@ -109,23 +116,39 @@ class Console:
         grid.rowconfigure(0, weight=1)
         grid.columnconfigure(0, weight=1)
         self.empty = tk.StringVar(value='等待连接主控…')
-        ttk.Label(overview, textvariable=self.empty, foreground='#607588').pack(anchor='w', pady=(10, 0))
-        notice = ttk.Label(frame, textvariable=self.notice, wraplength=1040)
+        ttk.Label(overview, textvariable=self.empty, style='Shell.TLabel').pack(anchor='w', pady=(10, 0))
+        notice = ttk.Label(frame, textvariable=self.notice, wraplength=900, style='Shell.TLabel')
         notice.pack(side='bottom', fill='x', pady=8, before=self.notebook)
-        footer = ttk.Frame(frame)
+        footer = ttk.Frame(frame, style='Shell.TFrame')
         footer.pack(side='bottom', fill='x', before=notice)
         self.copy_button = ttk.Button(footer, text='复制本机管理员密钥', command=self.copy_key)
         self.copy_button.pack(side='left', padx=(0, 8))
         for text, folder in [('配置文件', 'config'), ('运行日志', 'logs')]:
             ttk.Button(footer, text=text, command=lambda f=folder: self.open_folder(f)).pack(side='left', padx=(0, 8))
-        ttk.Label(footer, text='关闭窗口后后台继续运行').pack(side='right')
+        ttk.Label(footer, text='关闭窗口后后台继续运行', style='Shell.TLabel').pack(side='right')
         from chemcompute.desktop_workspace import Workspace
         self.workspace = Workspace(self, self.notebook)
         from chemcompute.updates_ui import UpdatesPanel
         self.updates = UpdatesPanel(self)
+        self.nav_buttons = []
+        labels = ['⌂  本机与节点概览', '▤  任务中心', '▣  提交计算包', '◇  节点与邀请码', '◎  连接与 AI 设置', '⚙  依赖安装', '↻  在线更新']
+        for i, label in enumerate(labels):
+            button = ttk.Button(self.navigation, text=label, style='Nav.TButton', command=lambda index=i: self.notebook.select(index))
+            button.pack(fill='x', pady=4)
+            self.nav_buttons.append(button)
+        self.notebook.bind('<<NotebookTabChanged>>', self.page_changed)
+        self.page_changed()
+        self.empty_art = tk.Label(grid, image=self.servers, background='#ffffff')
+        self.empty_art.place(relx=.5, rely=.64, anchor='center')
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.timer = root.after(100, self.pump)
         self.refresh()
+
+    def page_changed(self, event=None):
+        selected = self.notebook.index(self.notebook.select())
+        for i, button in enumerate(self.nav_buttons):
+            button.configure(style='Selected.Nav.TButton' if i == selected else 'Nav.TButton')
+        self.page_title.set(['本机与节点概览', '任务中心', '提交计算包', '节点与邀请码', '连接与 AI 设置', '依赖安装', '在线更新'][selected])
 
     def worker(self, kind, function):
         def run():
@@ -160,6 +183,10 @@ class Console:
         self.copy_button.configure(state='disabled' if data['role'] == 'node' else 'normal')
         self.table.delete(*self.table.get_children())
         nodes = data['nodes']
+        if nodes:
+            self.empty_art.place_forget()
+        else:
+            self.empty_art.place(relx=.5, rely=.64, anchor='center')
         online = [n for n in nodes if n.get('status') in {'online', 'busy'}]
         counts = {'online': len(online),
                   'gromacs': sum(bool(n.get('software_info', {}).get('gromacs', {}).get('found')) for n in online),

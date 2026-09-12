@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chemcompute"
-version = "0.4.0"
+version = "0.5.0"
 description = "ChemCompute - 现代化化学计算与GROMACS分布式节点调度平台"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -53,6 +53,7 @@ where = ["."]
 include = ["chemcompute*"]
 
 [tool.setuptools.package-data]
+"chemcompute" = ["assets/*.png", "*.ps1"]
 "chemcompute.controller" = ["templates/*", "static/*", "static/css/*", "static/js/*"]
 
 [tool.ruff]

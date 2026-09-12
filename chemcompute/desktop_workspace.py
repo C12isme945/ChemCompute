@@ -57,7 +57,8 @@ class Workspace:
         horizontal.grid(row=1, column=0, sticky='ew')
         page.rowconfigure(0, weight=1)
         page.columnconfigure(0, weight=1)
-        frame = ttk.Frame(canvas, padding=18)
+        frame = ttk.Frame(canvas, padding=22)
+        ttk.Label(frame, text=name, font=('Microsoft YaHei UI', 18, 'bold')).pack(anchor='w', pady=(0, 18))
         item = canvas.create_window(0, 0, window=frame, anchor='nw')
         def layout(event=None):
             canvas.itemconfigure(item, width=max(canvas.winfo_width(), frame.winfo_reqwidth()),
@@ -310,6 +311,29 @@ class Workspace:
         except Exception:
             pass
         ttk.Button(self.invite_tab, text='保存本节点入网配置（后台停止后操作）', command=self.enroll).pack(anchor='w')
+        tools = ttk.Frame(self.invite_tab)
+        tools.pack(fill='x', pady=16)
+        for label, filename in [('打开 Gaussian 09W', 'g09w.exe'), ('打开 GaussView', 'gview.exe'), ('查看 Gaussian 工具目录', '')]:
+            ttk.Button(tools, text=label, command=lambda name=filename: self.open_gaussian_tool(name)).pack(side='left', padx=(0, 8))
+
+    def open_gaussian_tool(self, filename):
+        import os
+        import subprocess
+        try:
+            executable = Path(self.gaussian_path.get().strip())
+            if not executable.is_file() or executable.name.lower() not in {'g09.exe', 'g16.exe'}:
+                raise ValueError('请先填写本机 Gaussian g09.exe / g16.exe 的有效路径。')
+            target = executable.parent / filename if filename else executable.parent
+            if not target.exists():
+                raise ValueError('该 Gaussian 安装目录没有此工具。')
+            if filename:
+                subprocess.Popen([str(target)], cwd=target.parent)
+            else:
+                os.startfile(str(target))
+            self.console.notice.set('已打开 ' + (filename or 'Gaussian 工具目录'))
+        except Exception as exc:
+            self.console.notice.set(str(exc))
+
 
     def create_invite(self):
         try:

@@ -16,6 +16,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from chemcompute import __version__
 from chemcompute.online_update import process_record
 from chemcompute.update_maintenance import prepare_install
 
@@ -37,6 +38,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--baseline', type=Path, required=True)
     parser.add_argument('--installer', type=Path, required=True)
+    parser.add_argument('--baseline-version', default='0.4.0')
+    parser.add_argument('--target-version', default=__version__)
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     # Baseline 0.3 used a random TCP singleton port. Avoid Windows excluded
@@ -71,13 +74,16 @@ def main():
     try:
         with httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=5) as client:
             wait_for(lambda: client.get('/openapi.json').status_code == 200)
-            assert client.get('/openapi.json').json()['info']['version'] == '0.3.0'
+            assert client.get('/openapi.json').json()['info']['version'] == args.baseline_version
             tracked = [home/'role.json', home/'config/controller.yaml', home/'config/node.yaml', home/'data/chemcompute-admin.secret']
             wait_for(lambda: all(p.is_file() for p in tracked))
             # Enrollment can update node.yaml; wait for a node before snapshot.
             secret = (home/'data/chemcompute-admin.secret').read_text().strip()
             client.headers['Authorization'] = 'Bearer '+secret
             wait_for(lambda: client.get('/api/v1/nodes').json())
+            # The server inserts a node before the agent persists its returned
+            # credentials. Snapshot only after that asynchronous write finishes.
+            wait_for(lambda: yaml.safe_load((home/'config/node.yaml').read_text('utf-8')).get('node_token'))
             before = {p: p.read_bytes() for p in tracked}
             marker = home/'data/workspace/preserved-result.txt'
             marker.parent.mkdir(parents=True, exist_ok=True)
@@ -86,7 +92,7 @@ def main():
             gui = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(8)'])
             installer = args.installer.resolve()
             request = {'home': str(home), 'executable': str(exe), 'installer': str(installer),
-                       'sha256': hashlib.sha256(installer.read_bytes()).hexdigest(), 'version': '0.4.0',
+                       'sha256': hashlib.sha256(installer.read_bytes()).hexdigest(), 'version': args.target_version,
                        'ticket': ticket, 'gui': process_record(psutil.Process(gui.pid)),
                        'backend': process_record(psutil.Process(backend.pid)), 'test_install': True}
             folder = home/'updates/install-smoke'
@@ -97,14 +103,14 @@ def main():
             helper = subprocess.Popen([str(powershell), '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                        str(repo/'chemcompute/install_update.ps1'), '-RequestPath', str(request_path)], env=environment)
             assert helper.wait(timeout=180) == 0, (folder/'status.json').read_text('utf-8-sig')
-            wait_for(lambda: client.get('/openapi.json').json()['info']['version'] == '0.4.0')
+            wait_for(lambda: client.get('/openapi.json').json()['info']['version'] == args.target_version)
             for path, data in before.items():
                 assert path.read_bytes() == data, 'Configuration changed: '+path.name
             assert marker.read_text() == 'retain this result'
             assert client.get('/api/v1/nodes').status_code == 200
             client.headers.pop('Authorization')
             assert client.get('/api/v1/nodes').status_code == 401
-            print('PASS: independent helper, real 0.3 -> 0.4 installation, restart, authentication and retained configuration/results')
+            print(f'PASS: independent helper, real {args.baseline_version} -> {args.target_version} installation, restart, authentication and retained configuration/results')
     finally:
         for process in psutil.process_iter(['exe']):
             try:

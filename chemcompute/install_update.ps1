@@ -28,6 +28,12 @@ function Get-MatchingProcess($record) {
     $created = ($process.StartTime.ToUniversalTime() - [DateTime]'1970-01-01').TotalSeconds
     if ([Math]::Abs($created - $record.created) -gt 0.05 -or $process.Path -ne $record.exe) { throw 'Process identity changed; update cancelled.' }
     $info = Get-CimInstance Win32_Process -Filter "ProcessId=$($record.pid)"
+    # The GUI can exit between Get-Process and the CIM query. Never parse a
+    # missing command line: CommandLineToArgvW(null) describes this helper.
+    if ($null -eq $info -or [string]::IsNullOrWhiteSpace($info.CommandLine)) {
+        if ($process.HasExited) { return $null }
+        throw 'Unable to verify process arguments; update cancelled.'
+    }
     $actual = [ChemComputeArgs]::Parse($info.CommandLine)
     if ($actual.Count -ne $record.argv.Count) { throw 'Process arguments changed; update cancelled.' }
     if ([IO.Path]::GetFullPath($actual[0]) -ne [IO.Path]::GetFullPath($record.argv[0])) { throw 'Process launch path changed; update cancelled.' }

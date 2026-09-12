@@ -1,13 +1,13 @@
 :root {
-  --bg-primary: #f1f5f8;
+  --bg-primary: #edf5ff;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #eaf5f4;
-  --border-color: #dce5ec;
-  --text-primary: #183249;
+  --bg-card-hover: #e9f2ff;
+  --border-color: #d4e4fb;
+  --text-primary: #102653;
   --text-secondary: #536b7e;
   --text-muted: #607588;
-  --accent-blue: #007f82;
+  --accent-blue: #246cf5;
   --accent-green: #157347;
   --accent-yellow: #8a6200;
   --accent-red: #b83c46;
@@ -23,6 +23,7 @@
 }
 
 body {
+  background-image: radial-gradient(ellipse at 90% 0%, #cbe6ff 0%, transparent 50%);
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -442,7 +443,7 @@ tr:hover td {
 .tab-btn { white-space:nowrap; border-radius:8px; }
 .tab-btn.active { background:white; box-shadow:0 2px 6px #1832490d; }
 .tab-btn.active::after { display:none; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #007f82; outline-offset:3px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #246cf5; outline-offset:3px; }
 tr:hover td { background:#f4f9fa; }
 .progress-bar-container { background:#dce7ed; }
 @media(max-width:760px) {
