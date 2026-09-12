@@ -1,1 +1,1 @@
-"""ChemCompute 通用模块 (模型、安全、配置)"""
+"""Common models, protocols, and security utilities for ChemCompute."""

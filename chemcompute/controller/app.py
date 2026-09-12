@@ -1,83 +1,138 @@
-"""ChemCompute FastAPI 控制端主应用"""
+"""
+FastAPI application entrypoint for ChemCompute Controller.
+"""
 
-from __future__ import annotations
-
-import logging
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-from chemcompute import __version__
-from chemcompute.common.config import ControllerConfig
-from chemcompute.common.security import load_or_create_runtime_admin_secret
-from chemcompute.controller.db import Database
-from chemcompute.controller.routes.auth import router as auth_router
-from chemcompute.controller.routes.jobs import router as jobs_router
+from chemcompute.controller.database import Database
+from chemcompute.controller.scheduler import Scheduler
 from chemcompute.controller.routes.nodes import router as nodes_router
-from chemcompute.controller.routes.tasks import router as tasks_router
-from chemcompute.controller.routes.web import router as web_router
+from chemcompute.controller.routes.enroll import router as enroll_router
+from chemcompute.controller.routes.jobs import router as jobs_router
+from chemcompute.controller.routes.updates import router as updates_router
+from chemcompute.controller.routes.templates import router as templates_router
+from chemcompute.controller.websocket import ws_manager
+from chemcompute.common.models import NodeState, JobStatus
+from fastapi import WebSocket, WebSocketDisconnect
 
-logger = logging.getLogger("chemcompute.controller")
+
+DATA_DIR = Path.cwd() / "controller_data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "chemcompute.db"
+STORAGE_ROOT = DATA_DIR / "storage"
+STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+
+db = Database(DB_PATH)
+db.seed_official_releases()
+scheduler = Scheduler(db)
 
 
-def create_app(config: ControllerConfig | None = None) -> FastAPI:
-    """构建并配置 FastAPI 控制端实例"""
-    if config is None:
-        config = ControllerConfig()
+async def background_scheduler_loop():
+    """Periodically execute scheduler cycles to match pending jobs."""
+    while True:
+        try:
+            scheduler.schedule_cycle()
+        except Exception:
+            pass
+        await asyncio.sleep(2.0)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        # 1. 初始化持久化 SQLite
-        app.state.db = Database(config.db_path)
-        app.state.node_offline_threshold_seconds = config.node_offline_threshold_seconds
-        app.state.heartbeat_interval_seconds = config.heartbeat_interval_seconds
 
-        # 2. 安全装载或生成运行时管理员密钥
-        admin_secret, is_new = load_or_create_runtime_admin_secret(
-            explicit_secret=config.admin_secret,
-            secret_file_path=config.secret_file,
-        )
-        app.state.admin_secret = admin_secret
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Setup background task
+    if not hasattr(app.state, "db") or app.state.db is None:
+        app.state.db = db
+    if not hasattr(app.state, "storage_root") or app.state.storage_root is None:
+        app.state.storage_root = STORAGE_ROOT
+    task = asyncio.create_task(background_scheduler_loop())
+    yield
+    task.cancel()
 
-        banner = [
-            "=" * 60,
-            f" ChemCompute Controller v{__version__} 启动成功",
-            f" 监听地址: http://{config.host}:{config.port}",
-            f" SQLite 数据库: {config.db_path}",
-        ]
-        if is_new:
-            banner.extend([
-                " [安全提示] 已为您生成全新运行时管理员密钥:",
-                f" 密钥已保存至本地: {config.secret_file}",
-            ])
-        else:
-            banner.append(" [安全提示] 管理员密钥已自配置/环境变量或已有密钥文件安全加载")
-        banner.append("=" * 60)
-        logger.info("\n".join(banner))
 
-        yield
+app = FastAPI(
+    title="ChemCompute Controller",
+    description="Distributed Chemical Computation Node Grid & Scheduler",
+    version="0.3.0",
+    lifespan=lifespan
+)
 
-        logger.info("ChemCompute 控制端正在关闭...")
+app.state.db = db
+app.state.storage_root = STORAGE_ROOT
 
-    app = FastAPI(
-        title="ChemCompute 控制中心",
-        description="现代化化学计算与GROMACS分布式节点调度平台",
-        version=__version__,
-        lifespan=lifespan,
-    )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    # 挂载静态资源
-    static_dir = Path(__file__).parent / "static"
-    static_dir.mkdir(parents=True, exist_ok=True)
+app.include_router(nodes_router)
+app.include_router(enroll_router)
+app.include_router(jobs_router)
+app.include_router(updates_router)
+app.include_router(templates_router)
+
+
+@app.websocket("/ws/nodes/{node_id}")
+async def websocket_node_endpoint(websocket: WebSocket, node_id: str):
+    await ws_manager.connect_node(node_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Can process incoming agent ping or status ack
+    except WebSocketDisconnect:
+        await ws_manager.disconnect_node(node_id)
+    except Exception:
+        await ws_manager.disconnect_node(node_id)
+
+
+@app.websocket("/ws/console")
+async def websocket_console_endpoint(websocket: WebSocket):
+    await ws_manager.connect_console(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await ws_manager.disconnect_console(websocket)
+    except Exception:
+        await ws_manager.disconnect_console(websocket)
+
+
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-    # 注册路由模块
-    app.include_router(web_router)
-    app.include_router(auth_router)
-    app.include_router(nodes_router)
-    app.include_router(jobs_router)
-    app.include_router(tasks_router)
 
-    return app
+@app.get("/")
+def serve_index():
+    index_file = static_dir / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "ChemCompute Controller is running. Web console static files not found."}
+
+
+@app.get("/api/cluster/stats")
+def get_cluster_stats():
+    """Get high-level summary metrics of nodes and jobs."""
+    nodes = db.list_nodes()
+    jobs = db.list_jobs()
+
+    online_nodes = [n for n in nodes if n.status != NodeState.OFFLINE]
+    running_jobs = [j for j in jobs if j.status in [JobStatus.RUNNING, JobStatus.ASSIGNED]]
+    completed_jobs = [j for j in jobs if j.status == JobStatus.COMPLETED]
+
+    return {
+        "total_nodes": len(nodes),
+        "online_nodes": len(online_nodes),
+        "total_jobs": len(jobs),
+        "running_jobs": len(running_jobs),
+        "completed_jobs": len(completed_jobs)
+    }
