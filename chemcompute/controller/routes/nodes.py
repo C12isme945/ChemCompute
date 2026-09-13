@@ -140,7 +140,7 @@ async def node_heartbeat(
     )
 
     # 查询待分发作业
-    pending_jobs_data = db.get_pending_jobs_for_node(node_id) if payload.status == "online" else []
+    pending_jobs_data = db.get_pending_jobs_for_node(node_id) if payload.status == "online" and not (payload.hardware.contribution or {}).get("paused") else []
     assigned_jobs: list[JobSpec] = []
     for j in pending_jobs_data:
         db.mark_job_running(j["job_id"], node_id)

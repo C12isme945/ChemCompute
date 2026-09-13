@@ -30,13 +30,14 @@ class Console:
             SIDEBAR,
             apply_theme,
             asset,
+            icon,
             molecules,
         )
         root.geometry(f'{min(1380, root.winfo_screenwidth()-80)}x{min(880, root.winfo_screenheight()-100)}')
         root.minsize(min(1180, root.winfo_screenwidth()-80), min(780, root.winfo_screenheight()-100))
         root.configure(background=BG)
         self.style = apply_theme(root)
-        self.logo = asset(root, 'logo.png', 18)
+        self.logo = asset(root, 'app-logo.png', 1)
         self.servers = asset(root, 'servers.png', 6)
         root.iconphoto(True, self.logo)
         sidebar = tk.Frame(root, background=SIDEBAR, width=234, padx=16, pady=22)
@@ -45,7 +46,7 @@ class Console:
         tk.Label(sidebar, image=self.logo, background=SIDEBAR).pack(anchor='w')
         tk.Label(sidebar, text='ChemCompute', font=('Segoe UI', 20, 'bold'), background=SIDEBAR, foreground=INK).pack(anchor='w', pady=(2, 4))
         tk.Label(sidebar, text='桌面操控台 / 私人化学计算网络', font=(FONT, 8), background=SIDEBAR, foreground=MUTED).pack(anchor='w')
-        tk.Label(sidebar, text=f'v{__version__} · 预发布', font=(FONT, 9), background=SIDEBAR, foreground=MUTED).pack(anchor='w', pady=(6, 25))
+        tk.Label(sidebar, text=f'v{__version__} · 正式版', font=(FONT, 9), background=SIDEBAR, foreground=MUTED).pack(anchor='w', pady=(6, 25))
         self.navigation = tk.Frame(sidebar, background=SIDEBAR)
         self.navigation.pack(fill='x')
         tk.Label(sidebar, text='Compute for\na Better Chemistry', justify='left', background=SIDEBAR, foreground=MUTED, font=('Segoe UI', 10)).pack(side='bottom', anchor='w', pady=8)
@@ -70,12 +71,13 @@ class Console:
         actions = ttk.Frame(frame, style='Shell.TFrame')
         actions.pack(fill='x', pady=(0, 16))
         self.buttons = {}
+        self.action_icons = {label: icon(root, name, label == '启动后台') for label, name in [('启动后台', 'play'), ('停止后台', 'square'), ('重启后台', 'refresh-cw'), ('打开 Web 控制台', 'external-link'), ('刷新', 'refresh-cw')]}
         for text, action in [('启动后台', lambda: self.perform(backend.start)),
                              ('停止后台', lambda: self.confirm_stop(False)),
                              ('重启后台', lambda: self.confirm_stop(True)),
                              ('打开 Web 控制台', self.open_web),
                              ('刷新', self.refresh)]:
-            button = ttk.Button(actions, text=text, command=action, style='Accent.TButton' if text == '启动后台' else 'TButton')
+            button = ttk.Button(actions, text=' ' + text, image=self.action_icons[text], compound='left', command=action, style='Accent.TButton' if text == '启动后台' else 'TButton')
             button.pack(side='left', padx=(0, 8))
             self.buttons[text] = button
         ttk.Button(actions, text='在线更新', command=lambda: self.notebook.select(self.updates.frame)).pack(side='right')
@@ -87,6 +89,7 @@ class Console:
         ttk.Label(overview, text='节点状态来自实时心跳；软件探测不代表许可证与科学模型已验证。', style='Shell.TLabel').pack(anchor='w', pady=(0, 16))
         cards = tk.Frame(overview, background=BG)
         cards.pack(fill='x', pady=(0, 18))
+        self.metric_icons = [icon(root, name) for name in ['server', 'cpu', 'package-open', 'gpu']]
         self.metrics = {}
         for index, (key, title) in enumerate([('online', '在线节点'), ('gromacs', 'GROMACS 可用节点'), ('gaussian', 'Gaussian 已探测'), ('gpu', '已探测 GPU')]):
             from chemcompute.desktop_theme import Panel
@@ -96,7 +99,7 @@ class Console:
             cards.columnconfigure(index, weight=1, uniform='metrics')
             value = tk.StringVar(value='—')
             self.metrics[key] = value
-            tk.Label(card, text=title, background='#ffffff', foreground='#516d80', font=('Microsoft YaHei UI', 10)).pack(anchor='w')
+            tk.Label(card, text='  ' + title, image=self.metric_icons[index], compound='left', background='#ffffff', foreground='#516d80', font=('Microsoft YaHei UI', 10)).pack(anchor='w')
             tk.Label(card, textvariable=value, background='#ffffff', foreground='#246cf5', font=('Segoe UI', 26, 'bold')).pack(anchor='w', pady=(4, 0))
         grid = ttk.Frame(overview)
         grid.pack(fill='both', expand=True)
@@ -110,6 +113,7 @@ class Console:
         scroll_y = ttk.Scrollbar(grid, orient='vertical', command=self.table.yview)
         scroll_x = ttk.Scrollbar(grid, orient='horizontal', command=self.table.xview)
         self.table.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        self.table.tag_configure('alternate', background='#f3f7ff')
         self.table.grid(row=0, column=0, sticky='nsew')
         scroll_y.grid(row=0, column=1, sticky='ns')
         scroll_x.grid(row=1, column=0, sticky='ew')
@@ -128,12 +132,16 @@ class Console:
         ttk.Label(footer, text='关闭窗口后后台继续运行', style='Shell.TLabel').pack(side='right')
         from chemcompute.desktop_workspace import Workspace
         self.workspace = Workspace(self, self.notebook)
+        from chemcompute.contribution_ui import ContributionPanel
+        self.contribution = ContributionPanel(self)
         from chemcompute.updates_ui import UpdatesPanel
         self.updates = UpdatesPanel(self)
         self.nav_buttons = []
-        labels = ['⌂  本机与节点概览', '▤  任务中心', '▣  提交计算包', '◇  节点与邀请码', '◎  连接与 AI 设置', '⚙  依赖安装', '↻  在线更新']
+        labels = ['本机与节点概览', '任务中心', '提交计算包', '节点与邀请码', '连接与 AI 设置', '依赖安装', '算力贡献', '在线更新']
+        self.page_labels = labels
+        self.nav_icons = [(icon(root, name), icon(root, name, True)) for name in ['house', 'list-todo', 'package-open', 'network', 'settings-2', 'wrench', 'gauge', 'download']]
         for i, label in enumerate(labels):
-            button = ttk.Button(self.navigation, text=label, style='Nav.TButton', command=lambda index=i: self.notebook.select(index))
+            button = ttk.Button(self.navigation, text='  ' + label, image=self.nav_icons[i][0], compound='left', style='Nav.TButton', command=lambda index=i: self.notebook.select(index))
             button.pack(fill='x', pady=4)
             self.nav_buttons.append(button)
         self.notebook.bind('<<NotebookTabChanged>>', self.page_changed)
@@ -147,8 +155,8 @@ class Console:
     def page_changed(self, event=None):
         selected = self.notebook.index(self.notebook.select())
         for i, button in enumerate(self.nav_buttons):
-            button.configure(style='Selected.Nav.TButton' if i == selected else 'Nav.TButton')
-        self.page_title.set(['本机与节点概览', '任务中心', '提交计算包', '节点与邀请码', '连接与 AI 设置', '依赖安装', '在线更新'][selected])
+            button.configure(style='Selected.Nav.TButton' if i == selected else 'Nav.TButton', image=self.nav_icons[i][int(i == selected)])
+        self.page_title.set(self.page_labels[selected])
 
     def worker(self, kind, function):
         def run():
@@ -195,11 +203,14 @@ class Console:
         for key, value in counts.items():
             self.metrics[key].set(str(value) if data['online'] else '—')
         self.empty.set('暂无节点。启动本机后台，或在“节点与邀请码”中邀请其他电脑。' if not nodes else f'共 {len(nodes)} 个节点 · 每 5 秒刷新')
-        for node in data['nodes']:
+        for index, node in enumerate(data['nodes']):
             hardware = node.get('hardware_info', {})
             software = node.get('software_info', {}).get('gromacs', {})
+            offer = hardware.get('contribution') or {}
             state = {'online': '在线', 'offline': '离线', 'busy': '忙碌'}.get(node['status'], node['status'])
-            self.table.insert('', 'end', values=(node['name'], state,
+            if offer.get('paused') and state != '离线':
+                state = '暂停接单'
+            self.table.insert('', 'end', tags=('alternate',) if index % 2 else (), values=(node['name'], state,
                               f"{hardware['cpu_percent']:.1f}%" if hardware.get('cpu_percent') is not None else '—',
                               f"{hardware['ram_percent']:.1f}%" if hardware.get('ram_percent') is not None else '—',
                               ', '.join(g['name'] for g in hardware.get('gpus', [])) or '未检测到',
@@ -275,7 +286,8 @@ def run_console(smoke_test: bool = False) -> int:
         console.render({'role': 'both', 'running': False, 'online': False, 'url': 'http://127.0.0.1:8000', 'notice': 'Smoke test', 'nodes': []})
         assert console.buttons['启动后台'].winfo_exists()
         assert console.table.winfo_exists()
-        assert len(console.notebook.tabs()) == 7
+        assert len(console.notebook.tabs()) == 8
+        assert console.contribution.save_button.winfo_exists()
         assert console.updates.check_button.winfo_exists()
         assert console.workspace.task_tree.winfo_exists()
         root.after(100, console.close)

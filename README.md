@@ -1,22 +1,24 @@
 # ChemCompute
 
-## v0.6.0 专属邀请部署与 Gaussian 安装服务
+## v1.0.0 · 首个正式版
 
-新增专属邀请部署包：预填一次性邀请码与 HTTPS 地址，默认计算节点和登录启动，安装后自动注册。Gaussian/GaussView 安装介质可由用户私下附带，支持厂商安装向导与路径探测。融合 Tenacity，为更新下载提供最多三次网络错误重试。桌面保留浅蓝配色、左侧导航与算力卡片。节点概览、任务中心、计算包提交、邀请码、连接与 AI、依赖安装和在线更新功能保持可用。状态来自实际后台与节点心跳。在线更新包含官方版本检查、下载进度与取消、SHA-256 校验、任务空闲检查及保留数据的重启安装。
+中文桌面操控台、专属邀请部署、GROMACS / Gaussian 任务与在线升级。安装包内置 Python 与 Tk，目标电脑不需要另装 Python。
 
-详见 [在线更新说明](docs/online-update.md) 与 [兼容性检查](docs/audit-2026-09-12.md)。预发布版；更新需要短暂重启，不承诺运行中替换或自动回滚。
+- **算力贡献**：在软件内设置 CPU 核心贡献比例、内存调度预算、GPU 开关，或暂停接收新任务；保存后从下一个任务生效。
+- **界面与图标**：浅蓝工作台、统一 Lucide 导航与操作图标、资源卡片、桌面快捷方式和安装器应用图标。
+- **一机入网**：主控导出专属邀请部署包，新电脑安装后注册；Gaussian / GaussView 仅通过私有授权介质提供厂商安装服务。
+- **在线升级**：官方 GitHub 下载、SHA-256 校验、任务空闲检查、保留配置与结果的重启安装。不是运行中代码替换。
+- **自签名发布**：主程序与安装包签名；新电脑不默认信任此发行者，详见 [签名与信任限制](docs/signing.md)。
 
-![桌面工作台](docs/images/desktop-v050.png)
+![桌面工作台](docs/images/desktop-v100.png)
 
-将 Windows 电脑接入私人化学计算网络的开源 MVP。包含 Inno Setup 安装器、FastAPI/SQLite 控制端、中文 Web Console、后台节点代理、GROMACS 与 Gaussian 适配器。MIT 许可。
+正式版指本应用的发行通道，不代表化学模型、Gaussian 许可证或跨物理机性能得到验证。历史小体系 GROMACS 冒烟结果见版本验证文档；当前本机 WSL 探测存在超时，不能据此声称当前实际计算可用。Gaussian 探测不等于许可或真实计算验证。此版本仍使用当前用户登录启动，不保证未登录或注销后运行。
 
-**这是 0.6.0 预发布版。Windows 安装包已内置 Python 与 Tk，目标电脑不需要另装 Python。** 安装页面默认勾选 WSL、GROMACS 和匹配的显示驱动安装，可分别取消。程序通过在线官方/发行版源安装依赖，安装器不包含商业软件或许可证。Gaussian 使用节点已有授权安装。已验证 WSL GROMACS 两水分子 100 步 CPU 冒烟计算；不代表科学模型有效性。两个逻辑节点的并发分配已测试；不同物理电脑的吞吐量和无人登录开机运行尚未验证。
-
-详见 [专属邀请部署与 Gaussian 安装指南](docs/invited-deployment.md) 和 [开源组件说明](docs/open-source-integrations.md)。
+详见 [专属邀请部署](docs/invited-deployment.md)、[开源组件](docs/open-source-integrations.md)、[算力设置](docs/contribution.md) 和 [在线更新](docs/online-update.md)。
 
 ## 安装与第一次运行
 
-1. 从 GitHub Releases 下载 `ChemCompute-Setup.exe`，对照 `SHA256SUMS.txt` 校验。安装包尚未代码签名。
+1. 从 GitHub Releases 下载 `ChemCompute-Setup.exe`，对照 `SHA256SUMS.txt` 校验。本版为自签名，Windows 可能提示发行者不受信任，见签名说明。
 2. 双击安装，选择 Controller、Compute node 或 Both。首次尝试选择 Both，即可在本机自动注册节点。
 3. Controller 默认监听 `127.0.0.1:8000`。若其他电脑需要加入，请填本机 Tailscale IP，并在节点上填对应 URL 与控制台生成的单次邀请码。
 4. 安装后自动创建桌面和开始菜单的 `ChemCompute Console` 快捷方式。安装结束后后台自动启动；打开原生桌面操控台即可查看连接状态和节点列表。新版任务中心、计算包上传、结果下载、邀请码及 AI 设置均可在桌面端完成。仅使用旧版 Web 页面时，管理员密钥在 `%LOCALAPPDATA%\ChemComputeData\data\chemcompute-admin.secret`，用记事本打开后粘贴到登录框。

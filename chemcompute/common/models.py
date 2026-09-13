@@ -21,6 +21,7 @@ class GpuDevice(BaseModel):
 
 class HardwareInfo(BaseModel):
     """节点硬件详细资产"""
+    contribution: dict | None = None
     cpu_count_logical: int = 1
     cpu_count_physical: int = 1
     cpu_percent: float = 0.0

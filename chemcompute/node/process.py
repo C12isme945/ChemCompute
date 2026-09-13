@@ -8,9 +8,9 @@ from pathlib import Path
 import psutil
 
 
-def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, process_record=None, **kwargs):
+def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, process_record=None, cpu_cores=None, env=None, **kwargs):
     proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            stdin=subprocess.DEVNULL, shell=False,
+                            stdin=subprocess.DEVNULL, shell=False, env=env,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     def save_process(value):
         if process_record:
@@ -55,13 +55,16 @@ def run_capped(cmd, cwd=None, timeout=300, cancel_event=None, process_record=Non
     try:
         deadline = time.monotonic() + timeout
         while proc.poll() is None:
+            if cpu_cores:
+                from chemcompute.contribution import pin_process
+                pin_process(proc, cpu_cores)
             if cancel_event and cancel_event.is_set():
                 terminate_tree()
                 raise InterruptedError('Computation cancelled')
             if time.monotonic() >= deadline:
                 raise subprocess.TimeoutExpired(cmd, timeout)
             time.sleep(0.1)
-    except subprocess.TimeoutExpired:
+    except Exception:
         terminate_tree()
         raise
     finally:

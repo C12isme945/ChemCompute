@@ -24,10 +24,10 @@ class UpdatesPanel:
         self.busy = False
         self.status = tk.StringVar(value='安装前会检查所有计算任务。运行中的任务不会被强行中断。')
         self.version = tk.StringVar(value=f'当前版本  {__version__}')
-        self.preview = tk.BooleanVar(value=True)
+        self.preview = tk.BooleanVar(value=False)
         ttk.Label(self.frame, text='让工作台保持最新', font=('Microsoft YaHei UI', 19, 'bold')).pack(anchor='w', pady=(0, 10))
         ttk.Label(self.frame, textvariable=self.version).pack(anchor='w', pady=(0, 12))
-        ttk.Checkbutton(self.frame, text='包含预发布版本（当前项目仍处于预发布阶段）', variable=self.preview).pack(anchor='w')
+        ttk.Checkbutton(self.frame, text='包含预发布版本（可选，默认仅检查正式版）', variable=self.preview).pack(anchor='w')
         actions = ttk.Frame(self.frame)
         actions.pack(fill='x', pady=16)
         self.check_button = ttk.Button(actions, text='检查更新', command=self.check)

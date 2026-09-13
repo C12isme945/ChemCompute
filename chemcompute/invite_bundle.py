@@ -50,7 +50,8 @@ def write_bundle(destination, installer, release, url, invite, media=None, licen
             archive.writestr('chemcompute-join.ini', text.getvalue().encode('utf-16'))
             for name, source in media.items():
                 archive.write(source, name)
-            archive.writestr('请先阅读.txt', f'请完整解压 ZIP 后运行 ChemCompute-Setup.exe。\n确认加入服务器：{url}\n安装器已预填一次性邀请码，默认登录时启动，安装结束后自动连接。\n有效期至 {invite["expires_at"]}，仅供一台电脑使用，请勿公开上传。\n关闭操控台不会停止后台。需要退出协作时点击停止后台。\nWSL/驱动可能需要管理员确认和重启。Gaussian 使用本机已有授权安装或在依赖安装页选择正式安装介质。\n此包不包含 Gaussian、许可证或管理员密钥。\n'.encode('utf-8-sig'))
+            media_note = '此包附带用户选择的安装介质；请确保目标电脑获授权，厂商向导可能需要操作。' if media else '此包不包含 Gaussian 安装介质。'
+            archive.writestr('请先阅读.txt', f'请完整解压 ZIP 后运行 ChemCompute-Setup.exe。\n确认加入服务器：{url}\n安装器已预填一次性邀请码，默认登录时启动，安装结束后自动连接。\n有效期至 {invite["expires_at"]}，仅供一台电脑使用，请勿公开上传。\n关闭操控台不会停止后台。需要退出协作时点击停止后台。\nWSL/驱动可能需要管理员确认和重启。Gaussian 使用本机已有授权安装或在依赖安装页选择正式安装介质。\n{media_note} 不包含许可证或管理员密钥。\n'.encode('utf-8-sig'))
         temporary.replace(destination)
         return str(destination)
     finally:

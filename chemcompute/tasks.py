@@ -69,6 +69,9 @@ class TaskSpec(BaseModel):
 def eligible(node: dict, resources: Resources, software='gromacs') -> bool:
     hw = node.get('hardware_info', {})
     sw = node.get('software_info', {}).get(software, {})
+    from chemcompute.contribution import admits
+    if hw.get('contribution') is not None and not admits(resources, hw['contribution']):
+        return False
     return (node.get('status') == 'online' and sw.get('found', False)
             and hw.get('cpu_count_logical', 0) >= resources.cpu
             and hw.get('ram_available_mb', 0) >= resources.ram_mb

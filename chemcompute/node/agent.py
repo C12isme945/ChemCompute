@@ -15,6 +15,7 @@ from chemcompute.common.models import (
     NodeHeartbeatRequest,
     NodeRegisterRequest,
 )
+from chemcompute.contribution import compute_budget, load_settings, snapshot
 from chemcompute.node.adapters.gromacs import GromacsAdapter
 from chemcompute.node.hardware import collect_hardware_info
 from chemcompute.node.software import collect_software_info
@@ -52,6 +53,7 @@ class NodeAgent:
 
         logger.info("正在向控制端 %s 发起入网注册...", self.config.controller_url)
         hw_info = collect_hardware_info()
+        hw_info.contribution = compute_budget(load_settings(self.config_path), hw_info)
         sw_info = collect_software_info(self.config.gromacs_custom_path, self.config.gaussian_custom_path)
 
         req_body = NodeRegisterRequest(
@@ -111,11 +113,12 @@ class NodeAgent:
         }
 
         hw = collect_hardware_info()
+        hw.contribution = compute_budget(load_settings(self.config_path), hw)
         sw = collect_software_info(self.config.gromacs_custom_path, self.config.gaussian_custom_path)
 
         req_body = NodeHeartbeatRequest(
             node_id=self.config.node_id,
-            status="busy" if self.active_task else "online",
+            status="busy" if self.active_task or hw.contribution["paused"] else "online",
             hardware=hw,
             software=sw,
         )
@@ -155,6 +158,7 @@ class NodeAgent:
             subcommand=job.subcommand,
             arguments=job.arguments,
             timeout_seconds=job.timeout_seconds,
+            contribution_budget=snapshot(self.config_path),
         )
 
         job_status = "completed" if res.exit_code == 0 else ("timeout" if res.exit_code == -9 else "failed")

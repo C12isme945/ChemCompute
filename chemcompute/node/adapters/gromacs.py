@@ -207,6 +207,7 @@ class GromacsAdapter:
         custom_cwd: Path | str | None = None,
         cancel_event=None,
         process_record=None,
+        contribution_budget=None,
     ) -> ExecutionResult:
         """
         受控有界执行 GROMACS 子命令：
@@ -278,12 +279,29 @@ class GromacsAdapter:
         # 超时时间有界收敛 (最小 5 秒，不超过 max_timeout)
         bounded_timeout = max(5, min(timeout_seconds, self.max_timeout))
 
+        child_env = None
+        if contribution_budget:
+            from chemcompute.contribution import execution_env, gromacs_arguments
+            try:
+                if contribution_budget['paused']:
+                    raise ValueError('Node contribution paused')
+                arguments = gromacs_arguments(subcmd_clean, arguments, contribution_budget)
+                child_env = execution_env(contribution_budget)
+            except ValueError as exc:
+                return ExecutionResult(-1, '', '', 0.0, str(exc))
         # 构建子进程执行参数列表 (shell=False)
         cmd = [info.executable_path, "--version" if subcmd_clean == "version" else subcmd_clean, *arguments]
         if self._wsl:
             # Direct argv and --cd avoid shell interpolation of paths or parameters.
             cmd = [info.executable_path, "--cd", str(work_dir), "--exec", "timeout", "--signal=TERM", "--kill-after=5", f"{bounded_timeout}s", "gmx", *cmd[1:]]
 
+        if self._wsl and contribution_budget:
+            # Restrict inside the Linux guest; Windows wsl.exe affinity is insufficient.
+            position = cmd.index('gmx')
+            env_args = ['OMP_NUM_THREADS=' + str(contribution_budget['cpu_cores']), 'OMP_THREAD_LIMIT=' + str(contribution_budget['cpu_cores'])]
+            if not contribution_budget['gpu_enabled']:
+                env_args += ['CUDA_VISIBLE_DEVICES=-1', 'ROCR_VISIBLE_DEVICES=-1', 'HIP_VISIBLE_DEVICES=-1']
+            cmd[position:position] = ['taskset', '--cpu-list', '0-' + str(contribution_budget['cpu_cores']-1), 'env', *env_args]
         start_time = time.monotonic()
         try:
             from chemcompute.node.process import run_capped
@@ -296,6 +314,8 @@ class GromacsAdapter:
                 timeout=bounded_timeout + 10 if self._wsl else bounded_timeout,
                 cancel_event=None if self._wsl else cancel_event,
                 process_record=process_record,
+                env=child_env,
+                cpu_cores=contribution_budget["cpu_cores"] if contribution_budget and not self._wsl else None,
                 shell=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )

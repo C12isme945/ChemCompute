@@ -26,7 +26,7 @@ def apply_theme(root):
     style.map('TButton', background=[('active', '#e0edff'), ('disabled', '#f0f4fa')], foreground=[('disabled', '#899ab4')])
     style.configure('Accent.TButton', background=BLUE, foreground=WHITE, bordercolor='#5596ff')
     style.map('Accent.TButton', background=[('disabled', '#d3dff4'), ('active', '#1554d9')], foreground=[('disabled', '#8298be'), ('!disabled', WHITE)])
-    style.configure('Nav.TButton', anchor='w', padding=(16, 13), background=SIDEBAR, borderwidth=0, foreground='#49658d')
+    style.configure('Nav.TButton', anchor='w', padding=(12, 10), background=SIDEBAR, borderwidth=0, foreground='#49658d')
     style.map('Nav.TButton', background=[('active', '#ccdefa')])
     style.configure('Selected.Nav.TButton', background='#347bf8', foreground=WHITE)
     style.map('Selected.Nav.TButton', background=[('active', '#246cf5')], foreground=[('!disabled', WHITE)])
@@ -43,6 +43,7 @@ def apply_theme(root):
     style.configure('TEntry', padding=6, fieldbackground='#fbfdff', bordercolor='#ccdff9')
     style.configure('TCombobox', padding=6, fieldbackground='#fbfdff')
     style.configure('Horizontal.TProgressbar', background=BLUE, troughcolor='#e3edfb', borderwidth=0)
+    style.configure('Horizontal.TScale', background=WHITE, troughcolor='#dbe8ff', borderwidth=0)
     root.option_add('*Text.Font', (FONT, 10))
     root.option_add('*Text.Background', '#f7faff')
     root.option_add('*Text.Foreground', INK)
@@ -53,6 +54,11 @@ def apply_theme(root):
 def asset(root, name, factor):
     # Display scaling only. The user-provided source artwork remains unchanged.
     return tk.PhotoImage(master=root, file=str(Path(__file__).with_name('assets') / name)).subsample(factor)
+
+
+def icon(root, name, selected=False):
+    suffix = '-white' if selected else '-blue'
+    return tk.PhotoImage(master=root, file=str(Path(__file__).with_name('assets') / f'icon-{name}{suffix}.png'))
 
 
 class Panel(tk.Canvas):

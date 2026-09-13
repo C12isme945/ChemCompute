@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 import psutil
 
+from chemcompute.contribution import admits, snapshot
 from chemcompute.node.adapters.gromacs import GromacsAdapter
 from chemcompute.packages import MAX_ARCHIVE_BYTES, extract_package, pack_results, sha256_file
 from chemcompute.tasks import TaskSpec
@@ -91,7 +92,7 @@ def execute(agent, client, task):
         if state['task']['lease_token'] != task['lease_token']:
             raise RuntimeError('Conflicting attempt in local workspace')
     else:
-        state = {'task': task, 'stage': 'input', 'next_step': 0, 'log': '', 'started': time.time(), 'done': False}
+        state = {'task': task, 'stage': 'input', 'next_step': 0, 'log': '', 'started': time.time(), 'done': False, 'contribution': snapshot(getattr(agent, 'config_path', None))}
         save(state_path, state)
     headers = {'X-Lease-Token': task['lease_token']}
     cancelled, finished = threading.Event(), threading.Event()
@@ -114,7 +115,12 @@ def execute(agent, client, task):
         if response.json()['cancelled']:
             cancelled.set()
         threading.Thread(target=watch, daemon=True).start()
+        if 'contribution' not in state:
+            state['contribution'] = snapshot(getattr(agent, 'config_path', None))
+            save(state_path, state)
         if state['stage'] == 'input':
+            if not admits(spec.resources, state['contribution']):
+                raise RuntimeError('Task exceeds current contribution or node is paused; adjust budget and retry')
             if spec.package_id:
                 with client.stream('GET', base + '/input', headers=headers) as response:
                     response.raise_for_status()
@@ -160,7 +166,7 @@ def execute(agent, client, task):
                 raise TimeoutError('Task wall-time limit exceeded')
             state['stage'] = 'executing'
             save(state_path, state)
-            options = {'timeout_seconds': remaining, 'cancel_event': cancelled, 'process_record': root / 'process.json'}
+            options = {'contribution_budget': state['contribution'], 'timeout_seconds': remaining, 'cancel_event': cancelled, 'process_record': root / 'process.json'}
             result = adapter.run_bounded(step.subcommand, arguments, **options)
             state['log'] = (state['log'] + f"\nStep {state['next_step']+1}: {spec.software} {step.subcommand}\n" + result.stdout + '\n' + result.stderr + '\n' + (result.error_message or ''))[-490000:]
             (directory / 'chemcompute-execution.log').write_text(state['log'], encoding='utf-8')
@@ -211,6 +217,8 @@ def run_queue(agent):
                             pending.append(value['task'])
                     if pending:
                         task = pending[0]
+                    elif snapshot(getattr(agent, 'config_path', None))['paused']:
+                        task = None
                     else:
                         response = client.post(url)
                         if response.status_code == 404:

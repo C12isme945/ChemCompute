@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#42dcf4"/><stop offset=".48" stop-color="#278bff"/><stop offset="1" stop-color="#184af0"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#b1e8ff" stop-opacity=".16"/></linearGradient>
+    <radialGradient id="sphere" cx=".3" cy=".22" r=".85"><stop stop-color="#fff"/><stop offset=".32" stop-color="#dbf6ff"/><stop offset="1" stop-color="#7fc8ff"/></radialGradient>
+  </defs>
+  <rect x="6" y="6" width="244" height="244" rx="57" fill="url(#blue)"/>
+  <rect x="9" y="9" width="238" height="238" rx="54" fill="none" stroke="url(#glass)" stroke-width="3"/>
+  <path d="M16 91 Q100 139 240 37 Q211 7 186 8 H62 Q8 8 8 65Z" fill="#fff" opacity=".13"/>
+  <g stroke="#e8faff" stroke-width="12" stroke-linecap="round"><path d="M128 114V66M106 148L69 183M149 148L187 183"/></g>
+  <g fill="url(#sphere)" stroke="#f3fcff" stroke-width="3">
+    <circle cx="128" cy="133" r="36"/><circle cx="128" cy="53" r="20"/>
+    <circle cx="59" cy="194" r="22"/><circle cx="197" cy="194" r="22"/>
+  </g>
+  <g fill="none" stroke="#def7ff" stroke-width="8" stroke-linecap="round" opacity=".9">
+    <path d="M71 81H53V99M185 81H203V99M44 128H60M196 128H212M117 210V224M139 210V224"/>
+  </g>
+</svg>

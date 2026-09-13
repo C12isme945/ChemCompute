@@ -269,6 +269,7 @@ class GaussianAdapter:
         timeout_seconds: int = 300,
         cancel_event: threading.Event | None = None,
         process_record=None,
+        contribution_budget=None,
     ) -> ExecutionResult:
         """受控有界执行 Gaussian 计算任务"""
         subcmd_clean = (subcommand or "").strip().lower()
@@ -292,6 +293,14 @@ class GaussianAdapter:
                 error_message=validation_error or "Input validation failed",
             )
 
+        if contribution_budget:
+            from chemcompute.contribution import validate_gaussian_input
+            try:
+                if contribution_budget['paused']:
+                    raise ValueError('Node contribution paused')
+                validate_gaussian_input(input_file, contribution_budget)
+            except ValueError as exc:
+                return ExecutionResult(-1, '', '', 0.0, str(exc))
         info = self.probe()
         if not info.get("found") or not info.get("executable_path"):
             return ExecutionResult(
@@ -307,7 +316,11 @@ class GaussianAdapter:
         # 仅为子进程注入 GAUSS_SCRDIR=workspace/scratch
         scratch_dir = (self.workspace_dir / "scratch").resolve()
         scratch_dir.mkdir(parents=True, exist_ok=True)
-        child_env = os.environ.copy()
+        if contribution_budget:
+            from chemcompute.contribution import execution_env
+            child_env = execution_env(contribution_budget)
+        else:
+            child_env = os.environ.copy()
         child_env["GAUSS_SCRDIR"] = str(scratch_dir)
 
         # 准备日志输出文件路径: inputstem.log 与 inputstem.stderr.log
@@ -417,6 +430,9 @@ class GaussianAdapter:
 
             deadline = start_time + bounded_timeout
             while proc.poll() is None:
+                if contribution_budget:
+                    from chemcompute.contribution import pin_process
+                    pin_process(proc, contribution_budget['cpu_cores'])
                 if cancel_event and cancel_event.is_set():
                     _terminate_tree(proc)
                     t_stdout.join(timeout=2)

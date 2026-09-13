@@ -1,4 +1,4 @@
-#define AppVersion "0.6.0"
+#define AppVersion "1.0.0"
 [Setup]
 AppId={code:GetAppId}
 AppName=ChemCompute
@@ -14,6 +14,8 @@ OutputBaseFilename=ChemCompute-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\chemcompute\assets\chemcompute.ico
+UninstallDisplayIcon={app}\ChemCompute.exe
 LicenseFile=..\LICENSE
 CloseApplications=yes
 SetupLogging=no
@@ -43,8 +45,8 @@ Name: gaussview; Description: "Install supplied GaussView media (confirm this co
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: ChemCompute; ValueData: "wscript.exe ""{app}\launch.vbs"""; Tasks: startup; Check: IsRealInstall; Flags: uninsdeletevalue
 
 [Icons]
-Name: "{userdesktop}\{code:GetShortcutName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; WorkingDir: "{app}"; Comment: "ChemCompute desktop control console"
-Name: "{group}\ChemCompute Console"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; WorkingDir: "{app}"
+Name: "{userdesktop}\{code:GetShortcutName}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; IconFilename: "{app}\ChemCompute.exe"; WorkingDir: "{app}"; Comment: "ChemCompute desktop control console"
+Name: "{group}\ChemCompute Console"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch-console.vbs"""; IconFilename: "{app}\ChemCompute.exe"; WorkingDir: "{app}"
 Name: "{group}\Start ChemCompute"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\launch.vbs"""
 Name: "{group}\Web Console"; Filename: "http://127.0.0.1:8000"
 Name: "{group}\Configuration and logs"; Filename: "{localappdata}\ChemComputeData"

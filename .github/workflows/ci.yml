@@ -70,7 +70,7 @@ jobs:
         with:
           name: ChemCompute-Windows-x64
           path: release
-      - name: Publish prerelease
+      - name: Preserve signed stable releases; publish preview builds only
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -78,6 +78,9 @@ jobs:
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release already published; verified CI binaries remain in the workflow artifact."
-          else
+          elif [[ "$TAG" == *-* || "$TAG" == v0.* ]]; then
             gh release create "$TAG" release/* --prerelease --title "ChemCompute $TAG" --generate-notes
+          else
+            echo "Stable releases require the maintainer's signed artifacts. CI artifacts are unsigned and are not published as a stable release."
+            exit 1
           fi
