@@ -90,6 +90,11 @@ def pin_process(proc, cores):
                 pass
     except psutil.NoSuchProcess:
         pass
+    except psutil.AccessDenied:
+        # Windows can deny process inspection during teardown. Only tolerate it
+        # after observing termination; a live unconstrained process still fails.
+        if proc.poll() is None:
+            raise
 
 
 def execution_env(budget):

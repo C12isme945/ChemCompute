@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import httpx
+import psutil
 import pytest
 
 from chemcompute.common.models import GromacsSoftwareInfo, HardwareInfo
@@ -14,6 +15,7 @@ from chemcompute.contribution import (
     compute_budget,
     gromacs_arguments,
     load_settings,
+    pin_process,
     save_settings,
     validate_gaussian_input,
 )
@@ -79,6 +81,25 @@ def test_constraint_failure_terminates_process(tmp_path, monkeypatch):
     monkeypatch.setattr(policy, 'pin_process', Mock(side_effect=RuntimeError('Cannot pin')))
     with pytest.raises(RuntimeError, match='Cannot pin'):
         run_capped([sys.executable, '-c', 'import time; time.sleep(10)'], cwd=tmp_path, cpu_cores=1, timeout=5)
+
+
+@pytest.mark.parametrize('exit_code', [None, 0])
+def test_windows_teardown_access_denied_only_ignored_after_exit(monkeypatch, exit_code):
+    import chemcompute.contribution as policy
+    parent = Mock()
+    parent.cpu_affinity.return_value = [0, 1]
+    def process(pid=None):
+        if pid is None:
+            return parent
+        raise psutil.AccessDenied(pid)
+    monkeypatch.setattr(policy.psutil, 'Process', process)
+    proc = Mock(pid=99)
+    proc.poll.return_value = exit_code
+    if exit_code is None:
+        with pytest.raises(psutil.AccessDenied):
+            pin_process(proc, 1)
+    else:
+        pin_process(proc, 1)
 
 
 @pytest.mark.parametrize('wsl', [False, True])

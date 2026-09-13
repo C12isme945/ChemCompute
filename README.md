@@ -1,6 +1,8 @@
 # ChemCompute
 
-## v1.0.0 · 首个正式版
+## v1.0.1 · 正式版
+
+修复 Windows 进程退出瞬间的亲和性读取竞态；1.0.0 是首个正式版本。
 
 中文桌面操控台、专属邀请部署、GROMACS / Gaussian 任务与在线升级。安装包内置 Python 与 Tk，目标电脑不需要另装 Python。
 
